@@ -1,3 +1,5 @@
+.DS_Store
+data/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -5,8 +7,10 @@ __pycache__/
 
 # C extensions
 *.so
+exotools/
 
 # Distribution / packaging
+.idea
 .Python
 build/
 develop-eggs/
