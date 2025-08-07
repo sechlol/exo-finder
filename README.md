@@ -1,15 +1,16 @@
-# exo-finder
+# ExoFinder
 Deep Learning models for finding exoplanets with the transit method in TESS light curves
+
+## WIP
+This project is going through a major refactor to make it more maintainable, understandable, and easier to use, 
+you can find the full code at [https://version.helsinki.fi/ccardin/exoplanet-finder](https://version.helsinki.fi/ccardin/exoplanet-finder)
+
 
 ## Secret Management
 
 This project uses environment variables for managing sensitive information like API keys and credentials. To set up your secrets:
 
-1. Copy the `example.env` file to a new file named `.env` in the project root:
-   ```bash
-   cp example.env .env
-   ```
-
+1. Create a `.env` in the project root
 2. Edit the `.env` file and add your actual credentials:
    ```
    MAST_TOKEN=your_actual_token
