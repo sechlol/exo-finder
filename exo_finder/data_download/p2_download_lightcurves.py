@@ -16,6 +16,7 @@ logger = Logger(__name__)
 
 
 def download_known_planets_lightcurves():
+    # Load data
     exo_db: ExoDB = exo_dataset.load_known_exoplanets_dataset()
     observation_db: TicObsDB = tic_observations.load_observation_metadata()
 
