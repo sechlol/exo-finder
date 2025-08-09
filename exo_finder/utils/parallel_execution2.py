@@ -124,7 +124,7 @@ def parallel_execution(
     params: Sequence[Any] | Iterable[Any],
     task_distribution: TaskDistribution,
     n_jobs: int = os.cpu_count(),
-    description: str = "parallel",
+    description: str = "",
     batch_size: Optional[int] = None,
     sort_result: bool = True,
     task_profile: TaskProfile = TaskProfile.CPU_BOUND,
