@@ -14,7 +14,14 @@ from enum import Enum
 from typing import Any, Callable, Generator, Optional
 
 import cloudpickle  # pip install cloudpickle
-from rich.progress import Progress, TaskID, MofNCompleteColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    Progress,
+    TaskID,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+    TextColumn,
+    BarColumn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,18 +118,15 @@ def _call_batch_pickled(pickled_func: bytes, batch: Sequence[Any]) -> list[Any]:
     return _apply_func_to_batch_with_fallback(func, batch)
 
 
-# --------------------
-# Main API
-# --------------------
 def parallel_execution(
     func: Callable[[Any], Any] | Callable[[Sequence[Any]], list[Any]],
     params: Sequence[Any] | Iterable[Any],
     n_jobs: int,
     description: str,
     batch_size: Optional[int] = None,
-    task_profile: Optional[TaskProfile] = None,  # CPU_BOUND or IO_BOUND -> implementation chooses backend
-    show_combined_progress: bool = False,
-    sort_result: bool = True,  # True => preserve original order; False => may return in any order
+    task_profile: Optional[TaskProfile] = None,
+    show_combined_progress: bool = True,  # TODO: show_combined_progress=False is broken, it shows incorrect number of tasks
+    sort_result: bool = True,
 ) -> Generator[Any, None, None]:
     if n_jobs <= 0:
         raise ValueError("n_jobs must be >= 1")
@@ -144,31 +148,39 @@ def parallel_execution(
 
     # prepare tasks or streaming mode
     tasks: list[tuple[int, Any]] = []
-    stream_batches = False
     if batch_size is None:
         if is_seq:
             tasks = [(i, params[i]) for i in range(len(params))]
-        else:
-            stream_batches = False
     else:
         if is_seq:
             batch_list = _chunked_from_sequence(params, batch_size)
             tasks = [(start_idx, batch) for start_idx, batch in batch_list]
-        else:
-            stream_batches = True
 
-    # compute total units for progress (None if unknown)
+    # compute total units for progress
     if batch_size is None:
         total_units = len(params) if is_seq else None
     else:
         if is_seq:
-            total_units = len(tasks)
+            total_units = len(tasks)  # counting batches (preferred)
+            # if you want to count params instead, swap to:
+            # total_units = len(params)
         else:
             total_units = None
 
+    def _progress_advance(cnt: int) -> int:
+        """Determine how much to advance the progress bar."""
+        if batch_size is None:
+            return cnt
+        if is_seq and total_units == len(tasks):
+            # counting batches, so advance by 1 per batch
+            return 1
+        # else counting parameters, so advance by cnt
+        return cnt
+
     progress = Progress(
-        *Progress.get_default_columns(),
-        MofNCompleteColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}", style="progress.download"),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
     )
@@ -180,7 +192,6 @@ def parallel_execution(
 
         use_per_worker = (not show_combined_progress) and is_seq and (executor_cls is ThreadPoolExecutor)
 
-        # Per-worker mode (only for threads)
         if use_per_worker:
             seq_len = len(params)
             base, rem = divmod(seq_len, n_jobs)
@@ -207,19 +218,16 @@ def parallel_execution(
                         def _worker_process(chunk_local, tid):
                             res = []
                             if batch_size is None:
-                                # Single item processing
                                 for item in chunk_local:
                                     r = func(item)
                                     res.append(r)
                                     progress.update(tid, advance=1)
                             else:
-                                # Batch processing
-                                # Process items in batches of batch_size
-                                for i in range(0, len(chunk_local), batch_size):
-                                    batch = chunk_local[i:i+batch_size]
+                                for j in range(0, len(chunk_local), batch_size):
+                                    batch = chunk_local[j : j + batch_size]
                                     batch_res = _apply_func_to_batch_with_fallback(func, batch)
                                     res.extend(batch_res)
-                                    progress.update(tid, advance=1)
+                                    progress.update(tid, advance=_progress_advance(len(batch)))
                             return res
 
                         futures[executor.submit(_worker_process, chunk, per_worker_tasks[i])] = (start_idx, len(chunk))
@@ -240,22 +248,19 @@ def parallel_execution(
                                 yield r
             return
 
-        # Combined progress or process-based execution
         with progress:
             label = description
             if batch_size is not None:
-                label = f"{label} (Batches)"
+                label = f"{label} (Batched)"
             total = total_units if total_units is not None else None
             progress_task = progress.add_task(label, total=total)
 
-            # If using processes, pre-dump func with cloudpickle once
             is_process_backend = executor_cls is ProcessPoolExecutor
             pickled_func = cloudpickle.dumps(func) if is_process_backend else None
 
             with executor_cls(max_workers=n_jobs) as executor:
                 futures_map: dict[Future, tuple[int, int]] = {}
 
-                # Prebuilt tasks (Sequence)
                 if tasks:
                     for start_idx, payload in tasks:
                         if batch_size is None:
@@ -270,8 +275,33 @@ def parallel_execution(
                             else:
                                 fut = executor.submit(_call_batch, func, payload)
                             futures_map[fut] = (start_idx, len(payload))
+
+                    if not sort_result:
+                        for fut in as_completed(list(futures_map.keys())):
+                            start_idx, cnt = futures_map.pop(fut)
+                            result = fut.result()
+                            progress.update(progress_task, advance=_progress_advance(cnt))
+                            if batch_size is None:
+                                yield result
+                            else:
+                                for r in result:
+                                    yield r
+                    else:
+                        completed = {}
+                        for fut in as_completed(list(futures_map.keys())):
+                            start_idx, cnt = futures_map.pop(fut)
+                            completed[start_idx] = fut.result()
+                            progress.update(progress_task, advance=_progress_advance(cnt))
+                        for start in sorted(completed.keys()):
+                            res = completed[start]
+                            if batch_size is None:
+                                yield res
+                            else:
+                                for r in res:
+                                    yield r
+
                 else:
-                    # streaming cases
+                    # streaming single items
                     if batch_size is None:
                         idx = 0
                         max_in_flight = max(16, n_jobs * 2)
@@ -290,12 +320,11 @@ def parallel_execution(
                                     futures_map[fut] = (idx, 1)
                                     in_flight.add(fut)
                                     idx += 1
-                                done_iter = as_completed(in_flight)
-                                done_fut = next(done_iter)
+                                done_fut = next(as_completed(in_flight))
                                 in_flight.remove(done_fut)
                                 start_idx, cnt = futures_map.pop(done_fut)
                                 res = done_fut.result()
-                                progress.update(progress_task, advance=1)
+                                progress.update(progress_task, advance=_progress_advance(cnt))
                                 if not sort_result:
                                     yield res
                                 else:
@@ -307,7 +336,7 @@ def parallel_execution(
                             for fut in as_completed(list(in_flight)):
                                 start_idx, cnt = futures_map.pop(fut)
                                 res = fut.result()
-                                progress.update(progress_task, advance=1)
+                                progress.update(progress_task, advance=_progress_advance(cnt))
                                 if not sort_result:
                                     yield res
                                 else:
@@ -315,8 +344,9 @@ def parallel_execution(
                             for i in sorted(buffer_order.keys()):
                                 yield buffer_order[i]
                             return
+
+                    # streaming batches
                     else:
-                        # streaming batches
                         idx_gen = _chunked_from_iterable(params, batch_size)
                         max_in_flight = max(8, n_jobs * 2)
                         in_flight = set()
@@ -337,7 +367,7 @@ def parallel_execution(
                                 in_flight.remove(done)
                                 start_idx, blen = futures_map.pop(done)
                                 batch_res = done.result()
-                                progress.update(progress_task, advance=1)
+                                progress.update(progress_task, advance=_progress_advance(blen))
                                 if not sort_result:
                                     for r in batch_res:
                                         yield r
@@ -346,14 +376,11 @@ def parallel_execution(
                                     while next_yield_idx in buffer_order:
                                         for r in buffer_order.pop(next_yield_idx):
                                             yield r
-                                        # increment next_yield_idx by count of the yielded batch
-                                        # careful: previous batch size unknown here; we'll set next_yield_idx to next available key
-                                        # for simplicity we rely on sorted buffer keys at drain time
                         except StopIteration:
                             for fut in as_completed(list(in_flight)):
                                 start_idx, blen = futures_map.pop(fut)
                                 batch_res = fut.result()
-                                progress.update(progress_task, advance=1)
+                                progress.update(progress_task, advance=_progress_advance(blen))
                                 if not sort_result:
                                     for r in batch_res:
                                         yield r
@@ -364,67 +391,4 @@ def parallel_execution(
                                     yield r
                             return
 
-                # If prebuilt tasks were submitted (Sequence cases), collect results
-                if tasks:
-                    if not sort_result:
-                        for fut in as_completed(list(futures_map.keys())):
-                            start_idx, cnt = futures_map.pop(fut)
-                            result = fut.result()
-                            progress.update(progress_task, advance=cnt)
-                            if batch_size is None:
-                                yield result
-                            else:
-                                for r in result:
-                                    yield r
-                    else:
-                        completed = {}
-                        for fut in as_completed(list(futures_map.keys())):
-                            start_idx, cnt = futures_map.pop(fut)
-                            completed[start_idx] = fut.result()
-                            progress.update(progress_task, advance=cnt)
-                        for start in sorted(completed.keys()):
-                            res = completed[start]
-                            if batch_size is None:
-                                yield res
-                            else:
-                                for r in res:
-                                    yield r
-
     return _generator()
-
-
-import time
-
-
-def task_batch(params: list):
-    for i, x in enumerate(params):
-        time.sleep(0.01)
-    return params
-
-
-def task(params: int):
-    time.sleep(0.01)
-    return params
-
-
-def main():
-    iterator = parallel_execution(
-        func=task, params=range(1000), n_jobs=10, description="Test", show_combined_progress=False
-    )
-    print("Started")
-    l = list(iterator)
-    print(f"Done {len(l)} items")
-
-
-def main_batch():
-    iterator = parallel_execution(
-        func=task_batch, params=range(1000), n_jobs=10, batch_size=10, description="Test", show_combined_progress=False
-    )
-    print("Started")
-    l = list(iterator)
-    print(f"Done {len(l)} items")
-
-
-if __name__ == "__main__":
-    main()
-    main_batch()

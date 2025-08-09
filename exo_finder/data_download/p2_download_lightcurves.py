@@ -6,8 +6,8 @@ from exo_finder.default_datasets import (
     candidate_dataset,
     exo_dataset,
     tic_observations,
-    TRANSITING_LIGHTCURVES_DS,
-    SUNLIKE_LIGHTCURVES_DS,
+    transiting_lightcurves_ds,
+    sunlike_lightcurves_ds,
 )
 from exo_finder.utils.logger import Logger
 from exotools import ExoDB, TicObsDB
@@ -29,7 +29,7 @@ def download_known_planets_lightcurves():
 
     # # Download lightcurves in the selected metadata
     logger.info(f"Downloading {len(transiting_planets_meta)} lightcurves")
-    lc_db = TRANSITING_LIGHTCURVES_DS.download_lightcurves_from_tic_db(tic_obs_db=transiting_planets_meta)
+    lc_db = transiting_lightcurves_ds.download_lightcurves_from_tic_db(tic_obs_db=transiting_planets_meta)
     logger.success(f"Downloaded {len(lc_db)} lightcurves")
 
 
@@ -66,7 +66,7 @@ def download_sunlike_stars_lightcurves(
 
     # Download lightcurves
     logger.info(f"Downloading {len(observation_db)} observations from {len(observation_db.unique_tic_ids)} stars")
-    lc_db = SUNLIKE_LIGHTCURVES_DS.download_lightcurves_from_tic_db(tic_obs_db=observation_db)
+    lc_db = sunlike_lightcurves_ds.download_lightcurves_from_tic_db(tic_obs_db=observation_db)
     logger.success(f"Downloaded {len(lc_db)} lightcurves")
 
 

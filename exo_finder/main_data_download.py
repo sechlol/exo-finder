@@ -1,7 +1,7 @@
 import numpy as np
 
-from exo_finder.data_download.download_datasets import download_datasets
-from exo_finder.data_download.download_lightcurves import (
+from exo_finder.data_download.p1_download_datasets import download_datasets
+from exo_finder.data_download.p2_download_lightcurves import (
     download_known_planets_lightcurves,
     download_sunlike_stars_lightcurves,
 )
