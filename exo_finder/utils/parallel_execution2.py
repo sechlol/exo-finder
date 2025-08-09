@@ -1,20 +1,28 @@
-# parallel_execution_v3.py
+# parallel_execution_final.py
 from __future__ import annotations
 
 import os
 from enum import Enum
+from multiprocessing import Manager as MPManager
+
+# queue/manager selection for cross-backend progress reporting
+from queue import Queue as ThreadQueue
+from threading import Thread
 from typing import Any, Callable, Generator, Iterable, Optional, Sequence
 
 from joblib import Parallel, delayed
-from multiprocessing import Manager
-from threading import Thread
 from tqdm.auto import tqdm
 
 
-class TaskProfile2(Enum):
+class TaskDistribution(Enum):
     BALANCED = "balanced"
     STREAMED_BATCHES = "streamed_batches"
     STREAMED_SINGLE = "streamed_single"
+
+
+class TaskProfile(Enum):
+    IO_BOUND = "io_bound"
+    CPU_BOUND = "cpu_bound"
 
 
 def _is_sized(obj: Iterable[Any]) -> bool:
@@ -26,7 +34,8 @@ def _is_sized(obj: Iterable[Any]) -> bool:
 
 
 def _chunked_iterable(it: Iterable[Any], size: int):
-    buf = []
+    """Yield lists of at most `size` items from iterator `it`."""
+    buf: list[Any] = []
     for x in it:
         buf.append(x)
         if len(buf) >= size:
@@ -37,9 +46,9 @@ def _chunked_iterable(it: Iterable[Any], size: int):
 
 
 def _split_evenly(seq: Sequence[Any], n_parts: int):
+    """Split sequence into n_parts buckets as evenly as possible."""
     total = len(seq)
-    if n_parts <= 0:
-        n_parts = 1
+    n_parts = max(1, n_parts)
     base = total // n_parts
     rem = total % n_parts
     out = []
@@ -52,6 +61,7 @@ def _split_evenly(seq: Sequence[Any], n_parts: int):
 
 
 def _progress_thread(totals, queue):
+    """Update tqdm bars reading messages from `queue`."""
     if isinstance(totals, list):
         pbars = [tqdm(total=total, desc=f"Worker {i + 1}", position=i, leave=True) for i, total in enumerate(totals)]
         splitted = True
@@ -63,7 +73,8 @@ def _progress_thread(totals, queue):
         msg = queue.get()
         if msg is None or msg == "done":
             break
-        if isinstance(msg, tuple) and msg[0] == "update":
+        # expected ("update", pid, n)
+        if isinstance(msg, tuple) and msg and msg[0] == "update":
             pid = msg[1]
             n = msg[2] if len(msg) > 2 else 1
             if splitted:
@@ -76,9 +87,9 @@ def _progress_thread(totals, queue):
 
 def _worker_call_on_bucket(pid: int, bucket: Sequence[Any], func: Callable, queue):
     """
-    Try to call func(bucket). If that fails (TypeError), fall back to calling
-    func(item) for each item in bucket. Always report per-item updates to `queue`.
-    Return a list of results (one element per input item).
+    Called for BALANCED profile: try func(bucket) (batch-aware), else fallback
+    to per-item calls. Always emit per-item progress updates via `queue`.
+    Returns list of results (one element per input item).
     """
     try:
         res = func(bucket)
@@ -87,6 +98,7 @@ def _worker_call_on_bucket(pid: int, bucket: Sequence[Any], func: Callable, queu
                 queue.put(("update", pid, 1))
             return res
         else:
+            # single value for whole bucket -> count it as len(bucket) items
             queue.put(("update", pid, len(bucket)))
             return [res]
     except TypeError:
@@ -98,92 +110,117 @@ def _worker_call_on_bucket(pid: int, bucket: Sequence[Any], func: Callable, queu
 
 
 def _worker_call_on_streamed_chunk(chunk, func):
+    """Called for STREAMED_BATCHES: chunk is a list of items."""
     return func(chunk)
 
 
 def _worker_call_single(item, func):
+    """Called for STREAMED_SINGLE: item is a single param."""
     return func(item)
 
 
-def parallel_execution2(
+def parallel_execution(
     func: Callable[[Any], Any] | Callable[[Sequence[Any]], list[Any]],
     params: Sequence[Any] | Iterable[Any],
+    task_distribution: TaskDistribution,
     n_jobs: int = os.cpu_count(),
     description: str = "parallel",
     batch_size: Optional[int] = None,
-    task_profile: Optional[TaskProfile2] = None,
     sort_result: bool = True,
+    task_profile: TaskProfile = TaskProfile.CPU_BOUND,
 ) -> Generator[Any, None, None]:
-    if task_profile is None:
-        raise ValueError("task_profile must be specified and be one of TaskProfile2")
+    """
+    Parallel execution with configurable backend (threads/processes), streaming modes,
+    and progress reporting.
 
+    - backend: if 'threading' is selected, joblib will use threads (good for I/O-bound tasks like downloads).
+               other valid values: 'loky', 'multiprocessing', or None (joblib default).
+    """
+
+    backend = "loky" if task_profile == TaskProfile.CPU_BOUND else "threading"
     is_sized = _is_sized(params)
     params_list = list(params) if is_sized else None
     total_items: Optional[int] = len(params_list) if is_sized else None
 
-    if task_profile == TaskProfile2.STREAMED_BATCHES:
+    # Validate task_profile / batch_size semantics
+    if task_distribution == TaskDistribution.STREAMED_BATCHES:
         if not (batch_size and batch_size > 0):
-            raise ValueError("TaskProfile2.STREAMED_BATCHES requires batch_size > 0 (streamed chunks).")
-
-    if task_profile == TaskProfile2.BALANCED and batch_size is not None:
+            raise ValueError("TaskDistribution.STREAMED_BATCHES requires batch_size > 0 (streamed chunks).")
+    if task_distribution == TaskDistribution.BALANCED and batch_size is not None:
         raise ValueError(
-            "TaskProfile2.BALANCED does not accept batch_size. "
+            "TaskDistribution.BALANCED does not accept batch_size. "
             "BALANCED will split `params` evenly between workers and call `func` on each bucket."
         )
+    if task_distribution == TaskDistribution.STREAMED_SINGLE and (batch_size is not None and batch_size > 1):
+        raise ValueError("TaskDistribution.STREAMED_SINGLE dispatches items one-by-one. Set batch_size to None or 1.")
 
-    if task_profile == TaskProfile2.STREAMED_SINGLE and (batch_size is not None and batch_size > 1):
-        raise ValueError("TaskProfile2.STREAMED_SINGLE dispatches items one-by-one. Set batch_size to None or 1.")
-
-    manager = Manager()
-    queue = manager.Queue()
-    progress_thread = None
-    need_progress_thread = False
-    pbar = None
-
-    if task_profile == TaskProfile2.BALANCED:
-        if not is_sized:
-            raise ValueError("TaskProfile2.BALANCED requires a sized Sequence for `params`.")
-        buckets = _split_evenly(params_list, n_jobs)
-        totals = [len(b) for b in buckets]
-        need_progress_thread = True
-        tasks = (delayed(_worker_call_on_bucket)(pid, bucket, func, queue) for pid, bucket in enumerate(buckets))
-
-    elif task_profile == TaskProfile2.STREAMED_BATCHES:
-        if is_sized:
-            chunks = (params_list[i : i + batch_size] for i in range(0, len(params_list), batch_size))
-            totals = total_items
-        else:
-            chunks = _chunked_iterable(params, batch_size)
-            totals = None
-        tasks = (delayed(_worker_call_on_streamed_chunk)(chunk, func) for chunk in chunks)
-
-    else:  # STREAMED_SINGLE
-        if is_sized:
-            items = (params_list[i] for i in range(len(params_list)))
-            totals = total_items
-        else:
-            items = (x for x in params)
-            totals = None
-        tasks = (delayed(_worker_call_single)(item, func) for item in items)
-
+    # Choose queue implementation: thread backend uses a local ThreadQueue, else use multiprocessing.Manager().Queue
+    manager: Optional[MPManager] = None
+    queue = None
+    use_thread_queue = backend == "threading"
     try:
-        if need_progress_thread:
+        if use_thread_queue:
+            queue = ThreadQueue()
+        else:
+            manager = MPManager()
+            queue = manager.Queue()
+
+        # Build joblib tasks based on profile
+        if task_distribution == TaskDistribution.BALANCED:
+            if not is_sized:
+                raise ValueError("TaskDistribution.BALANCED requires a sized Sequence for `params`.")
+            buckets = _split_evenly(params_list, n_jobs)
+            totals = [len(b) for b in buckets]
+            need_progress_thread = True
+            tasks = (delayed(_worker_call_on_bucket)(pid, bucket, func, queue) for pid, bucket in enumerate(buckets))
+        elif task_distribution == TaskDistribution.STREAMED_BATCHES:
+            if is_sized:
+                chunks = (params_list[i : i + batch_size] for i in range(0, len(params_list), batch_size))
+                totals = total_items
+            else:
+                chunks = _chunked_iterable(params, batch_size)
+                totals = None
+            need_progress_thread = False
+            tasks = (delayed(_worker_call_on_streamed_chunk)(chunk, func) for chunk in chunks)
+        else:  # STREAMED_SINGLE
+            if is_sized:
+                items = (params_list[i] for i in range(len(params_list)))
+                totals = total_items
+            else:
+                items = (x for x in params)
+                totals = None
+            need_progress_thread = False
+            tasks = (delayed(_worker_call_single)(item, func) for item in items)
+
+        # Start progress UI: either per-worker thread reading queue, or a single overall pbar
+        progress_thread = None
+        pbar = None
+        if task_distribution == TaskDistribution.BALANCED:
             progress_thread = Thread(target=_progress_thread, args=(totals, queue), daemon=True)
             progress_thread.start()
         else:
             pbar = tqdm(total=totals, desc=description)
 
+        # Construct Parallel with backend and attempt to use generator return; fallback if unsupported
         return_mode = "generator" if sort_result else "generator_unordered"
         fallback_to_list = False
         try:
-            parallel = Parallel(n_jobs=n_jobs, return_as=return_mode)
+            if backend is None:
+                parallel = Parallel(n_jobs=n_jobs, return_as=return_mode)
+            else:
+                parallel = Parallel(n_jobs=n_jobs, backend=backend, return_as=return_mode)
         except ValueError:
-            parallel = Parallel(n_jobs=n_jobs)
+            # fallback to list-returning Parallel if chosen backend doesn't support generator returns
+            if backend is None:
+                parallel = Parallel(n_jobs=n_jobs)
+            else:
+                parallel = Parallel(n_jobs=n_jobs, backend=backend)
             fallback_to_list = True
 
         results_iterable = parallel(tasks)
         iterable = iter(results_iterable) if fallback_to_list else results_iterable
 
+        # Yield results as they appear; update pbar accordingly
         for task_result in iterable:
             if isinstance(task_result, list):
                 for r in task_result:
@@ -196,17 +233,17 @@ def parallel_execution2(
                     pbar.update(1)
 
     finally:
+        # Clean up progress UI and manager
         try:
-            if need_progress_thread:
+            if "progress_thread" in locals() and progress_thread is not None:
                 queue.put("done")
-                if progress_thread is not None:
-                    progress_thread.join()
-            else:
-                if pbar is not None:
-                    pbar.close()
+                progress_thread.join()
+            elif "pbar" in locals() and pbar is not None:
+                pbar.close()
         except Exception:
             pass
         try:
-            manager.shutdown()
+            if manager is not None:
+                manager.shutdown()
         except Exception:
             pass
