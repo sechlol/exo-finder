@@ -122,7 +122,7 @@ def parallel_execution(
     batch_size: Optional[int] = None,
     task_profile: Optional[TaskProfile] = None,  # CPU_BOUND or IO_BOUND -> implementation chooses backend
     show_combined_progress: bool = False,
-    unordered: bool = False,  # False => results may be returned in any order; True => preserve original order
+    sort_result: bool = True,  # True => preserve original order; False => may return in any order
 ) -> Generator[Any, None, None]:
     if n_jobs <= 0:
         raise ValueError("n_jobs must be >= 1")
@@ -224,7 +224,7 @@ def parallel_execution(
 
                         futures[executor.submit(_worker_process, chunk, per_worker_tasks[i])] = (start_idx, len(chunk))
 
-                    if not unordered:
+                    if not sort_result:
                         for fut in as_completed(futures):
                             start_idx, _ = futures[fut]
                             batch_res = fut.result()
@@ -296,7 +296,7 @@ def parallel_execution(
                                 start_idx, cnt = futures_map.pop(done_fut)
                                 res = done_fut.result()
                                 progress.update(progress_task, advance=1)
-                                if not unordered:
+                                if not sort_result:
                                     yield res
                                 else:
                                     buffer_order[start_idx] = res
@@ -308,7 +308,7 @@ def parallel_execution(
                                 start_idx, cnt = futures_map.pop(fut)
                                 res = fut.result()
                                 progress.update(progress_task, advance=1)
-                                if not unordered:
+                                if not sort_result:
                                     yield res
                                 else:
                                     buffer_order[start_idx] = res
@@ -338,7 +338,7 @@ def parallel_execution(
                                 start_idx, blen = futures_map.pop(done)
                                 batch_res = done.result()
                                 progress.update(progress_task, advance=1)
-                                if not unordered:
+                                if not sort_result:
                                     for r in batch_res:
                                         yield r
                                 else:
@@ -354,7 +354,7 @@ def parallel_execution(
                                 start_idx, blen = futures_map.pop(fut)
                                 batch_res = fut.result()
                                 progress.update(progress_task, advance=1)
-                                if not unordered:
+                                if not sort_result:
                                     for r in batch_res:
                                         yield r
                                 else:
@@ -366,11 +366,11 @@ def parallel_execution(
 
                 # If prebuilt tasks were submitted (Sequence cases), collect results
                 if tasks:
-                    if not unordered:
+                    if not sort_result:
                         for fut in as_completed(list(futures_map.keys())):
                             start_idx, cnt = futures_map.pop(fut)
                             result = fut.result()
-                            progress.update(progress_task, advance=1)
+                            progress.update(progress_task, advance=cnt)
                             if batch_size is None:
                                 yield result
                             else:
@@ -381,7 +381,7 @@ def parallel_execution(
                         for fut in as_completed(list(futures_map.keys())):
                             start_idx, cnt = futures_map.pop(fut)
                             completed[start_idx] = fut.result()
-                            progress.update(progress_task, advance=1)
+                            progress.update(progress_task, advance=cnt)
                         for start in sorted(completed.keys()):
                             res = completed[start]
                             if batch_size is None:

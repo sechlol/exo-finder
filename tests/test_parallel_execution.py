@@ -30,7 +30,7 @@ def test_sequence_single_and_batch_simple(task_profile, batch_size, show_combine
             batch_size=None,
             task_profile=task_profile,
             show_combined_progress=show_combined_progress,
-            unordered=True,
+            sort_result=True,
         )  # unordered True => preserve order by spec
         res = collect(it)
         assert res == [x * 2 for x in params]
@@ -43,7 +43,7 @@ def test_sequence_single_and_batch_simple(task_profile, batch_size, show_combine
             batch_size=batch_size,
             task_profile=task_profile,
             show_combined_progress=show_combined_progress,
-            unordered=True,
+            sort_result=True,
         )
         res = collect(it)
         assert res == [x * 2 for x in params]
@@ -64,7 +64,7 @@ def test_iterable_streamed_batches_preserve_order():
         batch_size=5,
         task_profile=TaskProfile.CPU_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=True,
     )
     res = collect(it)
     assert res == list(range(23))
@@ -85,7 +85,7 @@ def test_batch_size_greater_than_len_results_in_single_batch():
         batch_size=100,
         task_profile=TaskProfile.CPU_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=True,
     )
     res = collect(it)
     # each yielded element is ("BATCH_LEN", len(batch)), should equal len(params)
@@ -112,7 +112,7 @@ def test_unordered_flag_changes_ordering_behavior():
         batch_size=None,
         task_profile=TaskProfile.CPU_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=True,
     )
     res_preserve = collect(it_preserve)
     assert res_preserve == params
@@ -126,7 +126,7 @@ def test_unordered_flag_changes_ordering_behavior():
         batch_size=None,
         task_profile=TaskProfile.CPU_BOUND,
         show_combined_progress=True,
-        unordered=False,
+        sort_result=False,
     )
     res_any = collect(it_any)
     # must contain same multiset, but order can differ; ensure same elements
@@ -152,7 +152,7 @@ def test_large_n_jobs_forces_combined_progress_and_logs_warning(caplog):
         batch_size=None,
         task_profile=TaskProfile.IO_BOUND,
         show_combined_progress=False,
-        unordered=True,
+        sort_result=True,
     )
     res = collect(it)
     assert res == list(range(10))
@@ -174,7 +174,7 @@ def test_local_function_with_process_backend_is_supported():
         batch_size=None,
         task_profile=TaskProfile.CPU_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=True,
     )
     res = collect(it)
     assert res == [x + 1 for x in params]
@@ -194,7 +194,7 @@ def test_generator_partial_consumption_and_lazy_behavior():
         batch_size=None,
         task_profile=TaskProfile.IO_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=True,
     )
 
     # partial consumption
@@ -218,10 +218,8 @@ def test_sequence_single_callable_on_thread_backend_with_batching():
         batch_size=3,
         task_profile=TaskProfile.IO_BOUND,
         show_combined_progress=True,
-        unordered=True,
+        sort_result=False,
     )
     res = collect(it)
-    # Print for debugging
-    print(f"Expected: {sorted([x * 3 for x in params])}")
-    print(f"Got: {sorted(res)}")
+
     assert sorted(res) == sorted([x * 3 for x in params])
