@@ -2,8 +2,8 @@
 Deep Learning models for finding exoplanets with the transit method in TESS light curves
 
 ## WIP
-This project is going through a major refactor to make it more maintainable, understandable, and easier to use, 
-you can find the full code at [https://version.helsinki.fi/ccardin/exoplanet-finder](https://version.helsinki.fi/ccardin/exoplanet-finder)
+The project in this repository is currently incomplete, I'm doing a full rewrite of the original code to make it more maintainable, understandable, and easier to use. 
+You can find the full code at [https://version.helsinki.fi/ccardin/exoplanet-finder](https://version.helsinki.fi/ccardin/exoplanet-finder).
 
 
 ## Secret Management
