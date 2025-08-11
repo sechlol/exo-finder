@@ -2,3 +2,5 @@ plotly
 seaborn
 python-dotenv
 exotools
+batman-package
+wotan

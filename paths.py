@@ -7,6 +7,7 @@ PROJECT_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 DATA_PATH = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_PATH / "datasets"
 LIGHTCURVES_PATH = DATA_PATH / "lightcurves"
+TRAINING_DATASET_PATH = DATA_PATH / "training"
 
 
 # Analysis artifacts paths

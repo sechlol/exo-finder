@@ -38,5 +38,9 @@ def define_training_set() -> pd.DataFrame:
     return select_subset(lc_analysis)
 
 
+def generate_synthetic_transits():
+    pass
+
+
 if __name__ == "__main__":
     define_training_set()
