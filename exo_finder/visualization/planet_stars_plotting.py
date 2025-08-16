@@ -1,7 +1,6 @@
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 from matplotlib import pyplot as plt
 
 
@@ -15,15 +14,15 @@ def plot_planet_period_radius_mass(period_mass: np.ndarray, period_radius: np.nd
         ylabel="Planet Mass (M_earth)",
         yscale="log",
         title="Orbital Period vs Mass",
-        xlim=[None, 5],
-        ylim=(0.1, None),
+        # xlim=[None, 5],
+        # ylim=(0.1, None),
     )
     ax2.set(
         xlabel="Orbital Period (log10 d)",
         ylabel="Planet Radius (R_earth)",
         yscale="log",
         title="Orbital Period vs Radius",
-        xlim=(None, 3.5),
+        # xlim=(None, 3.5),
     )
 
     plt.tight_layout()

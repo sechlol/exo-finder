@@ -74,9 +74,6 @@ def estimate_limb_darkening_coefficients_clamped(t_eff: Quantity) -> tuple | np.
 
     # Clamp to model range to avoid nonsense
     t_eff_clamped = np.clip(t_eff, 3500, 7500)
-    if np.any((t_eff < 3500) | (t_eff > 7500)):
-        warnings.warn(f"Temperature {t_eff} outside calibrated range (4000-7500 K), using clamped value.")
-
     a = np.polyval(a_coeffs[::-1], t_eff_clamped)
     b = np.polyval(b_coeffs[::-1], t_eff_clamped)
 

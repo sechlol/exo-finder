@@ -1,6 +1,12 @@
 import numpy as np
 import pandas as pd
 
+from exo_finder.data_pipeline.generation.dataset_generation import (
+    SyntheticTransitDatasetGenerationParameters,
+    TransitProfile,
+)
+from exo_finder.data_pipeline.generation.time_generation import CADENCE_S, data_count_to_days
+from exo_finder.data_pipeline.generation.transit_generation import PlanetType
 from exo_finder.default_datasets import exo_dataset, candidate_dataset
 from paths import LC_STATS_RESULT_FILE
 
@@ -38,8 +44,40 @@ def define_training_set() -> pd.DataFrame:
     return select_subset(lc_analysis)
 
 
-def generate_synthetic_transits():
+def generate_sample_lightcurves():
     pass
+
+
+def generate_synthetic_transits():
+    dataset_length = 2**15
+    lightcurve_length_points = 2**12
+    lightcurve_time_window = data_count_to_days(data_points_count=dataset_length)
+
+    data_balance = [
+        # Hot Jupyters: short period, at least 2 transits
+        TransitProfile(
+            planet_type=PlanetType.JUPITER,
+            transit_period_range=(1, 5),
+            transit_midpoint_range=(0, 5),
+            weight=1,
+        ),
+    ]
+    generation_parameters = SyntheticTransitDatasetGenerationParameters(
+        dataset_length=2**15,  # 32768 examples
+        lightcurve_length_points=2**12,  # 4096 points, or about 5.68 days per light curve
+        transits_distribution=[
+            (0.25, None),
+            (
+                0.75,
+                TransitProfile(
+                    planet_type=PlanetType.JUPITER,
+                    transit_period_range=(2, 5),
+                    transit_midpoint_range=(0, 5),
+                ),
+            ),
+        ],
+    )
+    generator = generate_synthetic_transits(p, seed=8)
 
 
 if __name__ == "__main__":

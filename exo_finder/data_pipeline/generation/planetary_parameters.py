@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NamedTuple
 
 import batman
 import numpy as np
@@ -6,173 +6,59 @@ import numpy as np
 from .time_generation import time_of_first_transit_midpoint
 
 
-class PlanetaryParameters(batman.TransitParams):
-    def __repr__(self):
-        fields = ", ".join(f"{key}={value}" for key, value in vars(self).items())
-        return f"{self.__class__.__name__}({fields})"
+class PlanetaryParameters(NamedTuple):
+    period_d: float
+    transit_midpoint_d: float
+    planet_radius_solrad: float
+    star_radius_solrad: float
+    semi_major_axis_solrad: float
+    planet_mass_solmass: float
+    inclination_deg: float
+    eccentricity: float
+    argument_of_periastron_deg: float
+    limb_darkening_c1: float
+    limb_darkening_c2: float
 
     @property
-    def period(self) -> float | None:
-        """Get the orbital period in days"""
-        return self.per or 0
-
-    @period.setter
-    def period(self, value: float):
-        """Set the orbital period in days"""
-        self.per = value
+    def first_transit_midpoint_d(self) -> float:
+        return time_of_first_transit_midpoint(t0=0, transit_midpoint=self.transit_midpoint_d, period=self.period_d)
 
     @property
-    def transit_midpoint(self) -> float | None:
-        """
-        Get the midpoint of the first recorded transit in days
-        """
-        return self.t0 or 0
-
-    @transit_midpoint.setter
-    def transit_midpoint(self, value: float):
-        """Set the midpoint of the first recorded transit in days"""
-        self.t0 = value
+    def planet_to_star_radius(self) -> float:
+        return self.planet_radius_solrad / self.star_radius_solrad
 
     @property
-    def limb_darkening_coefficient(self) -> list[float] | None:
-        """Get the limb darkening coefficients"""
-        return self.u
+    def semimajor_axis_to_star_radius(self) -> float:
+        return self.semi_major_axis_solrad / self.star_radius_solrad
 
-    @limb_darkening_coefficient.setter
-    def limb_darkening_coefficient(self, value):
-        """Set the limb darkening coefficients"""
-        self.u = value
+    def to_batman(self) -> batman.TransitParams:
+        params = batman.TransitParams()
+        params.t0 = self.transit_midpoint_d
+        params.rp = self.planet_to_star_radius
+        params.per = self.period_d
+        params.a = self.semimajor_axis_to_star_radius
+        params.inc = self.inclination_deg
+        params.ecc = self.eccentricity
+        params.w = self.argument_of_periastron_deg
+        params.u = (self.limb_darkening_c1, self.limb_darkening_c2)
+        params.limb_dark = "quadratic"
+        return params
 
-    @property
-    def limb_darkening_model(self):
-        """Get the limb darkening model"""
-        return self.limb_dark
-
-    @limb_darkening_model.setter
-    def limb_darkening_model(self, value: str):
-        """Set the limb darkening model (e.g., 'quadratic', 'nonlinear')"""
-        self.limb_dark = value
-
-    @property
-    def planet_to_star_radius(self) -> float | None:
-        """Get the planet radius relative to the star radius"""
-        return self.rp
-
-    @planet_to_star_radius.setter
-    def planet_to_star_radius(self, value: float):
-        """Set the planet radius relative to the star radius"""
-        self.rp = value
-
-    @property
-    def semimajor_axis_to_star_radius(self) -> float | None:
-        """Get the semi-major axis relative to the star radius"""
-        return self.a
-
-    @semimajor_axis_to_star_radius.setter
-    def semimajor_axis_to_star_radius(self, value: float):
-        """Set the semi-major axis relative to the star radius"""
-        self.a = value
-
-    @property
-    def inclination(self) -> float | None:
-        """Get the orbital inclination in degrees"""
-        return self.inc
-
-    @inclination.setter
-    def inclination(self, value: float):
-        """Set the orbital inclination in degrees"""
-        self.inc = value
-
-    @property
-    def eccentricity(self) -> float | None:
-        """Get the orbital eccentricity"""
-        return self.ecc
-
-    @eccentricity.setter
-    def eccentricity(self, value: float):
-        """Set the orbital eccentricity"""
-        self.ecc = value
-
-    @property
-    def argument_of_periastron(self) -> float | None:
-        """Get the argument of periastron in degrees"""
-        return self.w
-
-    @argument_of_periastron.setter
-    def argument_of_periastron(self, value: float):
-        """Set the argument of periastron in degrees"""
-        self.w = value
-
-    @property
-    def planet_flux(self):
-        """Get the planet-to-star flux ratio"""
-        return self.fp
-
-    @planet_flux.setter
-    def planet_flux(self, value: float):
-        """Set the planet-to-star flux ratio"""
-        self.fp = value
-
-    @property
-    def secondary_eclipse_time(self) -> float | None:
-        """Get the time of secondary eclipse in days"""
-        return self.t_secondary
-
-    @secondary_eclipse_time.setter
-    def secondary_eclipse_time(self, value: float):
-        """Set the time of secondary eclipse in days"""
-        self.t_secondary = value
-
-    def to_json(self) -> dict[str, Any]:
-        """
-        Convert the planetary parameters to a JSON-serializable dictionary.
-
-        Returns:
-            dict: A dictionary containing all planetary parameters with descriptive keys
-        """
-        return {
-            "transit_midpoint": self.transit_midpoint,
-            "period": self.period,
-            "planet_to_star_radius": self.planet_to_star_radius,
-            "semimajor_axis_to_star_radius": self.semimajor_axis_to_star_radius,
-            "inclination": self.inclination,
-            "eccentricity": self.eccentricity,
-            "argument_of_periastron": self.argument_of_periastron,
-            "limb_darkening_coefficient": self.limb_darkening_coefficient,
-            "limb_darkening_model": self.limb_darkening_model,
-            "planet_flux": self.planet_flux,
-            "secondary_eclipse_time": self.secondary_eclipse_time,
-        }
+    def to_dict(self) -> dict[str, Any]:
+        return self._asdict()
 
     def to_numpy(self) -> np.ndarray:
-        """
-        Convert the essential planetary parameters to a numpy array.
+        return np.array(list(self))
 
-        Returns:
-            np.ndarray: Array containing the key planetary parameters in a standardized order
-        """
-        return np.array(
-            [
-                self.transit_midpoint,
-                self.period,
-                self.planet_to_star_radius,
-                self.semimajor_axis_to_star_radius,
-                self.inclination,
-                self.eccentricity,
-                self.argument_of_periastron,
-                self.planet_flux,
-                self.secondary_eclipse_time,
-                *self.limb_darkening_coefficient,
-            ],
-            dtype=np.float32,
-        )
+    def to_tuple(self) -> tuple[float, ...]:
+        return tuple(self)
 
     def to_numpy_for_training(self, data_time_min: float, data_time_max: float) -> np.ndarray:
         """
         Adjust the values of the planetary parameters for training.
         """
-        midpoint = self.transit_midpoint
-        period = self.period
+        midpoint = self.transit_midpoint_d
+        period = self.period_d
 
         # ensure that the transit midpoint is the first to appear in the data
         if midpoint > 0:
