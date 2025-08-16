@@ -4,12 +4,10 @@ from typing import Optional, NamedTuple
 
 import numpy as np
 import pandas as pd
-import pydantic
 from scipy.stats import median_abs_deviation
 
-from exo_finder.data_download.lightcurve_stats import gap_ratio
+from exo_finder.data_pipeline.lightcurve_stats import gap_ratio
 from exo_finder.utils.parallel_execution2 import parallel_execution, TaskDistribution, TaskProfile
-from exo_finder.utils.serialization import zip_msgpack
 from exotools import LightcurveDB
 from paths import LIGHTCURVES_PATH, LC_STATS_RESULT_FILE
 
@@ -33,8 +31,10 @@ class LightCurveStats(NamedTuple):
     mad: float
     normalized_std: float
     median: float
-    min: float
-    max: float
+    min_flux: float
+    max_flux: float
+    min_t: float
+    max_t: float
     length: int
 
 
@@ -67,12 +67,14 @@ def load_and_calculate_lightcurve_statistics(lc_path: str) -> Optional[LightCurv
         tic_id=tic_id,
         obs_id=obs_id,
         median=median,
-        min=lc_no_outliers.flux.value.min().item(),
-        max=lc_no_outliers.flux.value.max().item(),
+        min_flux=lc_no_outliers.flux.value.min().item(),
+        max_flux=lc_no_outliers.flux.value.max().item(),
         length=len(lightcurve),
         gap_ratio=gap_ratio(lightcurve.time.value),
         mad=median_abs_deviation(lightcurve.flux.value, nan_policy="omit"),
         normalized_std=lc_no_outliers.normalize().flux.value.std().item(),
+        min_t=lightcurve.time.value.min().item(),
+        max_t=lightcurve.time.value.max().item(),
     )
 
 
@@ -91,6 +93,7 @@ def analyze_lightcurves():
         params=all_lc_paths,
         task_distribution=TaskDistribution.STREAMED_BATCHES,
         batch_size=50,
+        n_jobs=1,
         sort_result=False,
         task_profile=TaskProfile.CPU_BOUND,
     )

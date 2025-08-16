@@ -4,3 +4,4 @@ python-dotenv
 exotools
 batman-package
 wotan
+h5py
