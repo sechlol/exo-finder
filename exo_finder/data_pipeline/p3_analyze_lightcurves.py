@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import median_abs_deviation
 
-from exo_finder.data_pipeline.lightcurve_stats import gap_ratio
-from exo_finder.utils.parallel_execution2 import parallel_execution, TaskDistribution, TaskProfile
+from exo_finder.compute.lc_utils import arg_split_array_in_contiguous_chunks, gap_ratio
+from exo_finder.constants import LC_WINDOW_SIZE, LC_WINDOW_MIN_SIZE
+from exo_finder.compute.parallel_execution import parallel_execution, TaskDistribution, TaskProfile
 from exotools import LightcurveDB
 from paths import LIGHTCURVES_PATH, LC_STATS_RESULT_FILE
 
@@ -27,15 +28,15 @@ def find_lightcurve_paths() -> list[str]:
 class LightCurveStats(NamedTuple):
     tic_id: int
     obs_id: int
+    length: int
     gap_ratio: float
+    split_ratio: float
+    split_count: int
     mad: float
     normalized_std: float
-    median: float
-    min_flux: float
-    max_flux: float
-    min_t: float
-    max_t: float
-    length: int
+    min_f: float
+    max_f: float
+    median_f: float
 
 
 def load_and_calculate_lightcurve_statistics(lc_path: str) -> Optional[LightCurveStats]:
@@ -43,13 +44,13 @@ def load_and_calculate_lightcurve_statistics(lc_path: str) -> Optional[LightCurv
         return None
 
     try:
-        lightcurve = LightcurveDB.load_lightcurve(lc_path)
+        lightcurve = LightcurveDB.load_lightcurve_plus(lc_path)
     except Exception as e:
         print(f"Failed to load {lc_path}: {repr(e)}")
         return None
 
     lc_no_outliers = lightcurve.remove_outliers().remove_nans()
-    median = np.median(lc_no_outliers.flux.value).item()
+    median = np.median(lc_no_outliers.flux_y).item()
 
     # If median is < 0, probably the lightcurve has corrupted data.
     if median < 0:
@@ -62,19 +63,25 @@ def load_and_calculate_lightcurve_statistics(lc_path: str) -> Optional[LightCurv
     else:
         raise ValueError(f"Invalid lightcurve path: {lc_path}")
 
+    contiguous_splits = arg_split_array_in_contiguous_chunks(
+        array=lc_no_outliers.time_x,
+        chunk_size=LC_WINDOW_SIZE,
+        tolerate_if_len_at_least=LC_WINDOW_MIN_SIZE,
+    )
+
     # Note: values need to be float(), otherwise the serialization to json will fail
     return LightCurveStats(
         tic_id=tic_id,
         obs_id=obs_id,
-        median=median,
-        min_flux=lc_no_outliers.flux.value.min().item(),
-        max_flux=lc_no_outliers.flux.value.max().item(),
+        median_f=median,
+        min_f=lc_no_outliers.flux_y.min().item(),
+        max_f=lc_no_outliers.flux_y.max().item(),
         length=len(lightcurve),
         gap_ratio=gap_ratio(lightcurve.time.value),
-        mad=median_abs_deviation(lightcurve.flux.value, nan_policy="omit"),
-        normalized_std=lc_no_outliers.normalize().flux.value.std().item(),
-        min_t=lightcurve.time.value.min().item(),
-        max_t=lightcurve.time.value.max().item(),
+        mad=median_abs_deviation(lightcurve.flux_y, nan_policy="omit"),
+        normalized_std=lc_no_outliers.normalize().flux_y.std().item(),
+        split_count=len(contiguous_splits),
+        split_ratio=sum(i2 - i1 for i1, i2 in contiguous_splits) / len(lightcurve),
     )
 
 
@@ -93,7 +100,6 @@ def analyze_lightcurves():
         params=all_lc_paths,
         task_distribution=TaskDistribution.STREAMED_BATCHES,
         batch_size=50,
-        n_jobs=1,
         sort_result=False,
         task_profile=TaskProfile.CPU_BOUND,
     )

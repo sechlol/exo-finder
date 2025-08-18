@@ -12,7 +12,7 @@ _cmap = plt.get_cmap("tab10")
 
 
 def plot_lightcurve_ax(
-    lightcurve: LightCurve | LightCurvePlus,
+    lightcurve: LightCurve | LightCurvePlus | np.ndarray,
     ax: plt.Axes,
     label: Optional[str] = None,
     title: Optional[str] = None,
@@ -28,9 +28,6 @@ def plot_lightcurve_ax(
 
 
 def plot_lightcurve_and_image(lightcurve: LightCurve, image_data: np.ndarray, title: Optional[str] = None):
-    time = lightcurve.time.value
-    flux = lightcurve.flux.value
-
     # Plot the light curve
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
     plot_lightcurve_ax(lightcurve, ax1)

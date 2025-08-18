@@ -1,7 +1,7 @@
 import time
 import pytest
 
-from exo_finder.utils.parallel_execution import TaskProfile, parallel_execution
+from exo_finder.compute.parallel_execution import TaskProfile, parallel_execution
 
 
 def _collect(iterator):

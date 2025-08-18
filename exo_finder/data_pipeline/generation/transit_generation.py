@@ -51,9 +51,9 @@ _PLANET_PARAMS_LOOKUP_TABLE = {
 
 def generate_transits_from_params(params: PlanetaryParameters, time_x: np.ndarray) -> np.ndarray:
     batman_params = params.to_batman()
-    # TODO: optimize performance by pre-computing the step size factor.
+    # TODO: optimize performance by pre-computing the step size factor if if limb darkening method is != quadratic.
     # See https://lkreidberg.github.io/batman/docs/html/trouble.html#help-batman-is-running-really-slowly-why-is-this
-    return batman.TransitModel(batman_params, time_x).light_curve(batman_params) - 1
+    return batman.TransitModel(batman_params, time_x).light_curve(batman_params).astype(np.float32) - 1
 
 
 def generate_transit_parameters(
@@ -87,7 +87,8 @@ def generate_transit_parameters(
 
     # Sample orbital period
     p_min, p_max = orbital_period_interval
-    period = 10 ** rnd.uniform(np.log10(p_min), np.log10(p_max)) * u.day
+    # period = 10 ** rnd.uniform(np.log10(p_min), np.log10(p_max)) * u.day
+    period = rnd.uniform(p_min, p_max) * u.day
 
     # Compute semi-major axis and a/R*
     semi_major_axis = _calculate_semimajor_axis(period, star_mass, planet_mass).to(u.solRad)

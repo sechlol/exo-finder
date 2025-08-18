@@ -1,9 +1,9 @@
 from typing import Optional, Generator, Sequence
 
+import astropy.units as u
 import numpy as np
 import pandas as pd
 import pydantic
-import astropy.units as u
 from tqdm import tqdm
 
 from exo_finder.data_pipeline.generation.time_generation import generate_time_days_of_length
@@ -22,7 +22,7 @@ class TransitProfile(pydantic.BaseModel):
     weight: float = 1
 
 
-class SyntheticTransitDatasetGenerationParameters(pydantic.BaseModel):
+class SyntheticTransitGenerationParameters(pydantic.BaseModel):
     dataset_length: int
     lightcurve_length_points: int
     transits_distribution: list[tuple[float, Optional[TransitProfile]]]
@@ -33,7 +33,7 @@ def _get_gaia_star_parameters() -> pd.DataFrame:
     return gaia_dataset.load_gaia_parameters_dataset().view[gaia_fields].to_pandas().dropna()
 
 
-def generate_synthetic_transits(params: SyntheticTransitDatasetGenerationParameters, seed: int) -> Generator:
+def generate_synthetic_transits(params: SyntheticTransitGenerationParameters, seed: int) -> Generator:
     transit_probabilities = [x[0] for x in params.transits_distribution]
     transit_profiles = [x[1] for x in params.transits_distribution]
     if sum(transit_probabilities) != 1.0:
@@ -73,26 +73,3 @@ def generate_synthetic_transits(params: SyntheticTransitDatasetGenerationParamet
         )
 
         yield generate_transits_from_params(params=generated_prams, time_x=time_in_days)
-
-
-if __name__ == "__main__":
-    p = SyntheticTransitDatasetGenerationParameters(
-        dataset_length=1000,
-        lightcurve_length_points=2**14,
-        transits_distribution=[
-            (0.25, None),
-            (
-                0.75,
-                TransitProfile(
-                    planet_type=PlanetType.JUPITER,
-                    transit_period_range=(2, 5),
-                    transit_midpoint_range=(0, 5),
-                ),
-            ),
-        ],
-    )
-    generator = generate_synthetic_transits(p, seed=8)
-    lel = list(generator)
-    blel = np.array([(x != 0).sum() for x in lel])
-    blyat = (blel == 0).sum() / len(lel)
-    print(blyat)
