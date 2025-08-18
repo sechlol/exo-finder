@@ -1,8 +1,13 @@
+import re
+from pathlib import Path
 from typing import Generator, Optional
+
 import numpy as np
 
-from exo_finder.constants import LC_WINDOW_SIZE, LC_WINDOW_MIN_SIZE
 from exotools.utils import get_contiguous_interval_indices
+
+# Use to match tic_id and obs_id from the lightcurve file path
+LC_ID_PATTERN = re.compile(r"(\d+)[/\\](\d+).fits")
 
 
 def split_array_in_contiguous_chunks_generator(array: np.ndarray, chunk_size: int) -> Generator[np.ndarray, None, None]:
@@ -48,15 +53,6 @@ def split_array_in_contiguous_chunks(
     ]
 
 
-if __name__ == "__main__":
-    arr1 = np.arange(3276)
-    arr2 = np.arange(4757)
-    for i_start, i_end in arg_split_array_in_contiguous_chunks(
-        array=arr1, chunk_size=LC_WINDOW_SIZE, tolerate_if_len_at_least=LC_WINDOW_MIN_SIZE
-    ):
-        pass
-
-
 def gap_ratio(time: np.ndarray) -> float:
     """
     Calculates the ratio between the duration of the gaps in the data over the whole observation time
@@ -65,3 +61,13 @@ def gap_ratio(time: np.ndarray) -> float:
     time_threshold = np.median(time_differences) * 10
     gaps = time_differences[time_differences > time_threshold]
     return gaps.sum() / (time[-1] - time[0])
+
+
+def parse_tic_id_obs_id_from_lc_path(lc_path: str | Path) -> tuple[int, int]:
+    match = LC_ID_PATTERN.search(str(lc_path))
+    if match:
+        tic_id = int(match.group(1))
+        obs_id = int(match.group(2))
+        return tic_id, obs_id
+    else:
+        raise ValueError(f"Invalid lightcurve path: {lc_path}")

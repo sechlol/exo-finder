@@ -16,14 +16,14 @@ Usage:
 """
 
 import platform
-from tqdm import tqdm
 import statistics as stats
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
 
 import h5py
 import numpy as np
+from tqdm import tqdm
 
 from exo_finder.utils.hdf5_wrapper import H5Wrapper
 
@@ -52,13 +52,13 @@ def bench_json(h5: H5Wrapper, num_entries: int = 100) -> Tuple[float, float]:
     # Write
     t0 = time.perf_counter()
     for i in range(num_entries):
-        h5.set_json(f"entry_{i:04d}", {"i": i, "payload": "x" * 64})
+        h5.write_json(f"entry_{i:04d}", {"i": i, "payload": "x" * 64})
     h5.flush()
     t1 = time.perf_counter()
     # Read
     t2 = time.perf_counter()
     for i in range(num_entries):
-        _ = h5.get_json(f"entry_{i:04d}")
+        _ = h5.read_json(f"entry_{i:04d}")
     t3 = time.perf_counter()
 
     writes_per_sec = num_entries / (t1 - t0)
@@ -167,7 +167,6 @@ def bench_read_random(
 def bench_read_sequential(
     file_path: Path, key: str, total_rows: int, batch_size: int, width: int, dtype: np.dtype, seed: int = 0
 ) -> Dict[str, float]:
-    rng = np.random.default_rng(seed)  # not used; kept for symmetry
     bpr = bytes_per_row(width, dtype)
     batches = plan_batches(total_rows, batch_size)
     h5 = H5Wrapper(file_path)
@@ -234,11 +233,11 @@ def main(
     )
     t0 = time.perf_counter()
     for i in tqdm(range(json_entries), desc="JSON: writing", unit="item"):
-        h5j.set_json(f"entry_{i:04d}", {"i": i, "payload": "x" * 64})
+        h5j.write_json(f"entry_{i:04d}", {"i": i, "payload": "x" * 64})
     h5j.flush()
     t1 = time.perf_counter()
     for i in tqdm(range(json_entries), desc="JSON: reading", unit="item"):
-        _ = h5j.get_json(f"entry_{i:04d}")
+        _ = h5j.read_json(f"entry_{i:04d}")
     t2 = time.perf_counter()
     h5j.finalize()
     h5j.close()

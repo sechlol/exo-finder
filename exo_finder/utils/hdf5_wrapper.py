@@ -1,8 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Literal, List
-from typing import Optional, Sequence, Tuple
+from typing import Any, List, Literal, Optional, Sequence, Tuple
 
 import h5py
 import numpy as np
@@ -35,7 +34,7 @@ class H5Wrapper:
         # Chunking / compression
         chunk_rows: Optional[int] = None,  # fixed rows per chunk; if None, use target_chunk_mib heuristic
         target_chunk_mib: float = 2.0,  # used if chunk_rows is None
-        compression_opts: Optional[int] = 1,  # gzip level or None
+        compression_opts: Optional[int] = None,  # gzip level or None
         shuffle: Optional[bool] = None,  # default: True for gzip, False for lzf
         # Read-side raw data chunk cache (per reader handle)
         rdcc_bytes: int = 256 * 1024 * 1024,
@@ -45,7 +44,7 @@ class H5Wrapper:
         libver: Literal["latest", "earliest"] = "latest",
         enable_file_locking: Optional[bool] = None,  # set HDF5_USE_FILE_LOCKING; None = don't touch env
     ):
-        self.file_path = Path(file_path)
+        self._file_path = Path(file_path)
         self.compression = compression
         self.compression_opts = compression_opts
         self.chunk_rows = chunk_rows
@@ -63,13 +62,15 @@ class H5Wrapper:
         self._wf: Optional[h5py.File] = None
         self._rf: Optional[h5py.File] = None
 
-    # -------------------- private helpers --------------------
+    @property
+    def file_path(self) -> Path:
+        return self._file_path
 
     def _open_writer(self) -> h5py.File:
         if self._wf is None:
-            os.makedirs(self.file_path.parent, exist_ok=True)
+            os.makedirs(self._file_path.parent, exist_ok=True)
             # "a" = create or read/write
-            self._wf = h5py.File(self.file_path, "a", libver=self.libver)
+            self._wf = h5py.File(self._file_path, "a", libver=self.libver)
             if "libver" not in self._wf.attrs:
                 self._wf.attrs["libver"] = self.libver
         return self._wf
@@ -77,7 +78,7 @@ class H5Wrapper:
     def _open_reader(self) -> h5py.File:
         if self._rf is None:
             # SWMR read with tuned raw chunk cache
-            self._rf = h5py.File(self.file_path, "r", libver=self.libver, swmr=True, **self._rdcc)
+            self._rf = h5py.File(self._file_path, "r", libver=self.libver, swmr=True, **self._rdcc)
         return self._rf
 
     @staticmethod
@@ -102,7 +103,7 @@ class H5Wrapper:
 
     # -------------------- JSON API --------------------
 
-    def set_json(self, json_key: str, data: dict[str, Any]):
+    def write_json(self, json_key: str, data: dict[str, Any]):
         """
         Lazy initialize JSON group; throws if same JSON key already exists.
         """
@@ -116,7 +117,7 @@ class H5Wrapper:
         ds = f.create_dataset(path, shape=(), dtype=h5py.string_dtype("utf-8"))
         ds[()] = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
 
-    def get_json(self, json_key: str) -> dict[str, Any]:
+    def read_json(self, json_key: str) -> dict[str, Any]:
         """
         Read JSON object; raises if missing.
         """

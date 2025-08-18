@@ -1,6 +1,6 @@
 import os
 from multiprocessing import Manager
-from typing import Sequence, Any
+from typing import Any, Sequence
 
 import astropy.units as u
 import numpy as np
@@ -8,22 +8,26 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.special import softmax
 
-from exo_finder.constants import LC_WINDOW_SIZE, DATASET_LENGTH
-from exo_finder.data_pipeline.generation.dataset_generation import SyntheticTransitGenerationParameters, TransitProfile
+import exo_finder.constants as consts
+from exo_finder.compute.parallel_execution import (
+    ShareMode,
+    TaskDistribution,
+    TaskProfile,
+    get_worker_context,
+    parallel_execution,
+)
+from exo_finder.data_pipeline.generation.dataset_generation_types import (
+    SyntheticLcDatasetMetadata,
+    SyntheticTransitGenerationParameters,
+    TransitProfile,
+)
 from exo_finder.data_pipeline.generation.time_generation import data_count_to_days, generate_time_days_of_length
 from exo_finder.data_pipeline.generation.transit_generation import (
     PlanetType,
     generate_transit_parameters,
     generate_transits_from_params,
 )
-from exo_finder.default_datasets import gaia_dataset
-from exo_finder.compute.parallel_execution import (
-    parallel_execution,
-    TaskDistribution,
-    TaskProfile,
-    ShareMode,
-    get_worker_context,
-)
+from exo_finder.default_datasets import gaia_dataset, train_dataset_h5
 
 
 def _get_gaia_star_parameters() -> pd.DataFrame:
@@ -44,12 +48,12 @@ def _init_globals(extra_arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def generate_synthetic_transits():
-    lightcurve_max_d = data_count_to_days(data_points_count=DATASET_LENGTH)
+def _define_data_balance() -> list[TransitProfile]:
+    lightcurve_max_d = data_count_to_days(data_points_count=consts.SYNTHETIC_DATASET_LENGTH)
     default_midpoint_range = (0, lightcurve_max_d)
 
     # Uniform class labels
-    data_balance = [
+    return [
         TransitProfile(
             planet_type=PlanetType.EARTH,
             transit_period_range=(0.4, lightcurve_max_d),
@@ -81,11 +85,15 @@ def generate_synthetic_transits():
             weight=1,
         ),
     ]
-    weight_for_none = 1
-    probabilities = softmax([x.weight if x else weight_for_none for x in data_balance])
+
+
+def generate_synthetic_transits():
+    data_balance = _define_data_balance()
+    probabilities = softmax([x.weight for x in data_balance])
+
     generation_parameters = SyntheticTransitGenerationParameters(
-        dataset_length=DATASET_LENGTH,
-        lightcurve_length_points=LC_WINDOW_SIZE,
+        dataset_length=consts.SYNTHETIC_DATASET_LENGTH,
+        lightcurve_length_points=consts.LC_WINDOW_SIZE,
         transits_distribution=list(zip(probabilities, data_balance)),
     )
 
@@ -104,12 +112,19 @@ def generate_synthetic_transits():
         "id_queue": id_queue,
     }
 
-    accumulated_transits = []
-    accumulated_params = []
+    random_indices = np.random.choice(
+        list(range(len(data_balance))),
+        size=consts.SYNTHETIC_DATASET_LENGTH,
+        replace=True,
+        p=probabilities,
+    )
 
+    total_rows = 0
+    transits_col = 0
+    params_col = 0
     for transits, generating_params in parallel_execution(
-        func=generate_transits_batch,
-        params=np.random.choice(list(range(len(probabilities))), size=DATASET_LENGTH, replace=True, p=probabilities),
+        func=_generate_transits_batch,
+        params=random_indices,
         task_distribution=TaskDistribution.STREAMED_BATCHES,
         description="Creating simulated transits",
         batch_size=batch_size,
@@ -120,16 +135,26 @@ def generate_synthetic_transits():
         share_mode=ShareMode.GLOBAL,
         init_process=_init_globals,
     ):
-        accumulated_transits.append(transits)
-        accumulated_params.append(generating_params)
+        train_dataset_h5.append(consts.HDF5_KEY_SYNTHETIC_DATA, transits)
+        train_dataset_h5.append(consts.HDF5_KEY_SYNTHETIC_PARAMS, generating_params)
+        total_rows += transits.shape[0]
+        transits_col = transits.shape[1]
+        params_col = generating_params.shape[1]
 
-    print(f"Generated {len(accumulated_transits)} lightcurves")
-    v1 = np.vstack(accumulated_params)
-    v2 = np.vstack(accumulated_transits)
-    print("Final Shape: ", v1.shape, v2.shape)
+    meta = SyntheticLcDatasetMetadata(
+        lc_data_shape=(total_rows, transits_col),
+        params_data_shape=(total_rows, params_col),
+        lc_window_size=consts.LC_WINDOW_SIZE,
+        generation_parameters=generation_parameters,
+    )
+
+    train_dataset_h5.write_json(json_key=consts.HDF5_KEY_SYNTHETIC_JSON_META, data=meta.model_dump())
+
+    print(f"All done! Dataset written to {train_dataset_h5.file_path}")
+    print(meta.model_dump_json(indent=4))
 
 
-def generate_transits_batch(indices: Sequence[int]) -> tuple[npt.NDArray, npt.NDArray]:
+def _generate_transits_batch(indices: Sequence[int]) -> tuple[npt.NDArray, npt.NDArray]:
     worker_context = get_worker_context()
 
     gaia_df = worker_context.get("gaia_df")

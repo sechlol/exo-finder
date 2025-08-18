@@ -1,19 +1,19 @@
 import os
-import re
-from typing import Optional, NamedTuple
+from typing import NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
 from scipy.stats import median_abs_deviation
 
-from exo_finder.compute.lc_utils import arg_split_array_in_contiguous_chunks, gap_ratio
-from exo_finder.constants import LC_WINDOW_SIZE, LC_WINDOW_MIN_SIZE
-from exo_finder.compute.parallel_execution import parallel_execution, TaskDistribution, TaskProfile
+from exo_finder.compute.lc_utils import (
+    arg_split_array_in_contiguous_chunks,
+    gap_ratio,
+    parse_tic_id_obs_id_from_lc_path,
+)
+from exo_finder.compute.parallel_execution import TaskDistribution, TaskProfile, parallel_execution
+from exo_finder.constants import LC_WINDOW_MIN_SIZE, LC_WINDOW_SIZE
 from exotools import LightcurveDB
-from paths import LIGHTCURVES_PATH, LC_STATS_RESULT_FILE
-
-# Use to match tic_id and obs_id from the lightcurve file path
-LC_ID_PATTERN = re.compile(r"(\d+)[/\\](\d+).fits")
+from paths import LC_STATS_RESULT_FILE, LIGHTCURVES_PATH
 
 
 def find_lightcurve_paths() -> list[str]:
@@ -56,12 +56,7 @@ def load_and_calculate_lightcurve_statistics(lc_path: str) -> Optional[LightCurv
     if median < 0:
         return None
 
-    match = LC_ID_PATTERN.search(lc_path)
-    if match:
-        tic_id = int(match.group(1))
-        obs_id = int(match.group(2))
-    else:
-        raise ValueError(f"Invalid lightcurve path: {lc_path}")
+    tic_id, obs_id = parse_tic_id_obs_id_from_lc_path(lc_path)
 
     contiguous_splits = arg_split_array_in_contiguous_chunks(
         array=lc_no_outliers.time_x,

@@ -13,3 +13,4 @@ TRAINING_DATASET_PATH = DATA_PATH / "training"
 # Analysis artifacts paths
 ANALYSIS_PATH = DATA_PATH / "analysis"
 LC_STATS_RESULT_FILE = ANALYSIS_PATH / "lightcurve_stats.feather"
+TRAINING_DATASET_FILE = TRAINING_DATASET_PATH / "training_dataset.hdf5"

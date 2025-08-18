@@ -1,14 +1,15 @@
 from exo_finder.default_storage import DEFAULT_STORAGE
+from exo_finder.utils.hdf5_wrapper import H5Wrapper
 from exotools import (
-    KnownExoplanetsDataset,
     CandidateExoplanetsDataset,
-    TicCatalogDataset,
+    KnownExoplanetsDataset,
     LightcurveDataset,
     LightcurveDB,
+    TicCatalogDataset,
 )
 from exotools.datasets import GaiaParametersDataset
 from exotools.datasets.tic_observations import TicObservationsDataset
-from paths import LIGHTCURVES_PATH
+from paths import LIGHTCURVES_PATH, TRAINING_DATASET_FILE
 
 exo_dataset = KnownExoplanetsDataset(storage=DEFAULT_STORAGE)
 candidate_dataset = CandidateExoplanetsDataset(storage=DEFAULT_STORAGE)
@@ -26,3 +27,6 @@ def get_combined_lightcurve_db() -> LightcurveDB:
     lc_db2 = sunlike_lightcurves_ds.load_lightcurve_dataset()
 
     return lc_db1.append(lc_db2)
+
+
+train_dataset_h5 = H5Wrapper(file_path=TRAINING_DATASET_FILE)
