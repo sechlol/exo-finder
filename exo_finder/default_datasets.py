@@ -2,7 +2,7 @@ from exo_finder.default_storage import DEFAULT_STORAGE
 from exo_finder.utils.hdf5_wrapper import H5Wrapper
 from exotools import (
     CandidateExoplanetsDataset,
-    KnownExoplanetsDataset,
+    PlanetarySystemsDataset,
     LightcurveDataset,
     LightcurveDB,
     TicCatalogDataset,
@@ -11,7 +11,7 @@ from exotools.datasets import GaiaParametersDataset
 from exotools.datasets.tic_observations import TicObservationsDataset
 from paths import LIGHTCURVES_PATH, TRAINING_DATASET_FILE
 
-exo_dataset = KnownExoplanetsDataset(storage=DEFAULT_STORAGE)
+exo_dataset = PlanetarySystemsDataset(storage=DEFAULT_STORAGE)
 candidate_dataset = CandidateExoplanetsDataset(storage=DEFAULT_STORAGE)
 gaia_dataset = GaiaParametersDataset(storage=DEFAULT_STORAGE)
 tic_observations = TicObservationsDataset(storage=DEFAULT_STORAGE)

@@ -8,14 +8,8 @@ from exo_finder.default_datasets import (
     gaia_dataset,
     tic_observations,
 )
-from exo_finder.default_storage import DEFAULT_STORAGE
 from exo_finder.utils.logger import Logger
-from exotools import (
-    KnownExoplanetsDataset,
-    ExoDB,
-    CandidateExoplanetsDataset,
-    CandidateDB,
-)
+from exotools import ExoDB, CandidateDB
 
 logger = Logger(__name__)
 
@@ -25,9 +19,7 @@ def download_datasets():
     if not exo_db:
         logger.info("***\nQuery Nasa Exoplanet Archive for Known Exoplanets (full catalog)")
         logger.info("Should take between 5-10 minutes.")
-        exo_db = KnownExoplanetsDataset(storage=DEFAULT_STORAGE).download_known_exoplanets(
-            with_gaia_star_data=True, store=True
-        )
+        exo_db = exo_dataset.download_known_exoplanets(with_gaia_star_data=True, store=True)
     gaia_exo_db = exo_dataset.load_gaia_dataset_of_known_exoplanets()
     logger.success(f"Downloaded {len(exo_db)} known exoplanets records and {len(gaia_exo_db)} gaia records")
 
@@ -35,7 +27,7 @@ def download_datasets():
     if not toi_db:
         logger.info("***\nQuery Nasa Exoplanet Archive for Candidate Exoplanets (full catalog)")
         logger.info("Should take around 5 minutes.")
-        toi_db = CandidateExoplanetsDataset(storage=DEFAULT_STORAGE).download_candidate_exoplanets(store=True)
+        toi_db = candidate_dataset.download_candidate_exoplanets(store=True)
     logger.success(f"Downloaded {len(toi_db)} candidate exoplanets records")
 
     # The GAIA_ID is not included in the TOI table, so we need to download it from the TIC database

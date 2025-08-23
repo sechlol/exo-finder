@@ -1,8 +1,15 @@
-plotly
-seaborn
-python-dotenv
 exotools
 batman-package
 wotan
 h5py
 torch
+python-dotenv
+
+# Code formatting
+ruff
+
+# Visualization and Jupyter notebook
+plotly
+seaborn
+notebook
+ipywidgets
