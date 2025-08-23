@@ -15,7 +15,8 @@ SYNTHETIC_DATASET_LENGTH = 2**16  # 65_536 examples
 HDF5_KEY_LC_DATA = "lc_data"
 HDF5_KEY_LC_SIZES = "lc_sizes"
 HDF5_KEY_LC_TIC_IDS = "lc_tic_ids"
-HDF5_KEY_LC_JSON_META = "lc_meta"
 HDF5_KEY_SYNTHETIC_DATA = "syn_lc_data"
 HDF5_KEY_SYNTHETIC_PARAMS = "syn_lc_params"
+
+HDF5_KEY_LC_JSON_META = "lc_meta"
 HDF5_KEY_SYNTHETIC_JSON_META = "syn_meta"

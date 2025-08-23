@@ -4,9 +4,13 @@ import pydantic
 
 import exo_finder.constants as consts
 from exo_finder.compute.detrending import fit_with_wotan
-from exo_finder.compute.lc_utils import arg_split_array_in_contiguous_chunks, parse_tic_id_obs_id_from_lc_path
+from exo_finder.compute.lc_utils import (
+    arg_split_array_in_contiguous_chunks,
+    parse_tic_id_obs_id_from_lc_path,
+    normalize_flux,
+)
 from exo_finder.compute.parallel_execution import TaskDistribution, parallel_execution
-from exo_finder.default_datasets import candidate_dataset, exo_dataset, sunlike_lightcurves_ds, train_dataset_h5
+from exo_finder.default_datasets import candidate_dataset, exo_dataset, sunlike_lightcurves_ds, get_train_dataset_h5
 from exotools import LightcurveDB
 from paths import LC_STATS_RESULT_FILE
 
@@ -85,19 +89,24 @@ def _detrend_lightcurves_batch(paths: list[str]) -> dict[str, np.ndarray]:
             chunk_size=consts.LC_WINDOW_SIZE,
             tolerate_if_len_at_least=consts.LC_WINDOW_MIN_SIZE,
         )
+        _, trend = fit_with_wotan(
+            time=time,
+            flux=flux,
+            return_trend=True,
+            window_length=0.25,
+            method="biweight",
+        )
 
         for i_start, i_end in splits:
             ti = time[i_start : i_end + 1]
             fi = flux[i_start : i_end + 1]
-            _, trend = fit_with_wotan(
-                time=ti,
-                flux=fi,
-                return_trend=True,
-                window_length=0.25,
-                method="biweight",
-            )
+            trend_i = trend[i_start : i_end + 1]
+
+            normalized_trend = normalize_flux(trend_i)
+            normalized_flux = normalize_flux(fi)
+
             # Append time, flux and trend on the same row
-            concatenated = _pad_and_concatenate(ti, fi, trend)
+            concatenated = _pad_and_concatenate(ti, normalized_flux, normalized_trend)
             data_batch.append(concatenated)
             data_size.append(len(concatenated))
             data_tic.append(tic_id)
@@ -115,6 +124,7 @@ def _detrend_lightcurves_batch(paths: list[str]) -> dict[str, np.ndarray]:
 def create_lightcurve_training_set():
     print("Selecting well behaving lightcurves...")
     selected_lc_db = _select_well_behaving_lightcurve_subset()
+    train_dataset_h5 = get_train_dataset_h5()
 
     total_rows = 0
     cols = 0

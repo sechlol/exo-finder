@@ -28,8 +28,8 @@ class H5Wrapper:
 
     def __init__(
         self,
-        file_path: Path,
-        compression: Literal["gzip", "lzf"] = "lzf",
+        file_path: Path | str,
+        compression: Optional[Literal["gzip", "lzf"]] = "lzf",
         *,
         # Chunking / compression
         chunk_rows: Optional[int] = None,  # fixed rows per chunk; if None, use target_chunk_mib heuristic
@@ -253,6 +253,57 @@ class H5Wrapper:
         if arr.ndim != 1:
             raise ValueError("Indices must be 1D.")
         return arr, (arr.size == 1)
+
+    def get_shape(self, key: str) -> list[int]:
+        """
+        Return the shape of a dataset as a list of ints.
+        Raises KeyError if the dataset does not exist.
+        """
+        return self._read_dataset(key).shape
+
+    def read_one(
+        self,
+        dataset_key: str,
+        row: int,
+        cols: Optional[int | Sequence[int] | slice] = None,
+    ) -> np.ndarray:
+        """
+        Optimized read for a single row.
+        - Raises if dataset does not exist.
+        - If cols is None: returns all columns (1D).
+        - Does NOT boundary-check: out-of-range errors propagate from h5py.
+        - Shape policy:
+            * single col -> return scalar
+            * otherwise  -> return 1D
+        """
+        d = self._read_dataset(dataset_key)
+        _, W = d.shape
+
+        # Fast-path: read the entire row into a preallocated buffer.
+        # (For row-chunked datasets, reading a subset of columns wouldn't reduce I/O anyway.)
+        row_buf = np.empty((W,), dtype=d.dtype)
+        # source_sel: one row, all cols; dest_sel: full buffer
+        d.read_direct(row_buf, np.s_[row, :], np.s_[:])
+
+        if cols is None:
+            return row_buf  # 1D (W,)
+
+        # Single column -> scalar
+        if isinstance(cols, (int, np.integer)):
+            return np.asarray(row_buf[int(cols)]).reshape(())  # scalar
+
+        # Slice of columns -> 1D
+        if isinstance(cols, slice):
+            return row_buf[cols]  # 1D
+
+        # Sequence of columns -> 1D (preserves order, supports duplicates)
+        idx = np.asarray(cols, dtype=np.int64)
+        if idx.ndim != 1:
+            raise ValueError("cols must be int, slice, or 1D sequence of ints.")
+        out = row_buf[idx]
+        # If sequence selects exactly one element, return scalar for consistency?
+        # Spec says: single col -> scalar (already handled by int case). For a length-1 sequence, keep 1D.
+        return out
 
     def read(
         self,

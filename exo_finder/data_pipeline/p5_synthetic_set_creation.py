@@ -27,7 +27,7 @@ from exo_finder.data_pipeline.generation.transit_generation import (
     generate_transit_parameters,
     generate_transits_from_params,
 )
-from exo_finder.default_datasets import gaia_dataset, train_dataset_h5
+from exo_finder.default_datasets import gaia_dataset, get_train_dataset_h5
 
 
 def _get_gaia_star_parameters() -> pd.DataFrame:
@@ -122,6 +122,8 @@ def generate_synthetic_transits():
     total_rows = 0
     transits_col = 0
     params_col = 0
+    train_dataset_h5 = get_train_dataset_h5()
+
     for transits, generating_params in parallel_execution(
         func=_generate_transits_batch,
         params=random_indices,
@@ -177,7 +179,11 @@ def _generate_transits_batch(indices: Sequence[int]) -> tuple[npt.NDArray, npt.N
             star_t_eff=gaia_row["teff_mean"] * u.K,
             rnd_generator=rng,
         )
-        generated_transits = generate_transits_from_params(params=transit_parameters, time_x=global_time_x)
+        generated_transits = generate_transits_from_params(
+            params=transit_parameters,
+            time_x=global_time_x,
+            median_flux=0,
+        )
 
         all_generated_params.append(transit_parameters.to_numpy())
         all_generated_transits.append(generated_transits)

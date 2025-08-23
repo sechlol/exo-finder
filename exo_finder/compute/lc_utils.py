@@ -10,6 +10,14 @@ from exotools.utils import get_contiguous_interval_indices
 LC_ID_PATTERN = re.compile(r"(\d+)[/\\](\d+).fits")
 
 
+def standardize_array(a: np.ndarray):
+    return (a - a.mean()) / a.std()
+
+
+def normalize_flux(a: np.ndarray):
+    return (a / np.median(a)) - 1
+
+
 def split_array_in_contiguous_chunks_generator(array: np.ndarray, chunk_size: int) -> Generator[np.ndarray, None, None]:
     for i_start, i_end in arg_split_array_in_contiguous_chunks(array=array, chunk_size=chunk_size):
         yield array[i_start : i_end + 1]

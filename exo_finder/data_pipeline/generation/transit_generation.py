@@ -17,7 +17,7 @@ class Density(enum.Enum):
     GAS = enum.auto()
 
 
-class PlanetType(enum.Enum):
+class PlanetType(enum.StrEnum):
     EARTH = enum.auto()
     SUPER_EARTH = enum.auto()
     MINI_NEPTUNE = enum.auto()
@@ -49,11 +49,15 @@ _PLANET_PARAMS_LOOKUP_TABLE = {
 }
 
 
-def generate_transits_from_params(params: PlanetaryParameters, time_x: np.ndarray) -> np.ndarray:
+def generate_transits_from_params(
+    params: PlanetaryParameters,
+    time_x: np.ndarray,
+    median_flux: float = 0,
+) -> np.ndarray:
     batman_params = params.to_batman()
     # TODO: optimize performance by pre-computing the step size factor if if limb darkening method is != quadratic.
     # See https://lkreidberg.github.io/batman/docs/html/trouble.html#help-batman-is-running-really-slowly-why-is-this
-    return batman.TransitModel(batman_params, time_x).light_curve(batman_params).astype(np.float32) - 1
+    return batman.TransitModel(batman_params, time_x).light_curve(batman_params).astype(np.float32) + (median_flux - 1)
 
 
 def generate_transit_parameters(
