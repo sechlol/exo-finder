@@ -155,7 +155,8 @@ def create_lightcurve_training_set():
     )
 
     train_dataset_h5.write_json(json_key=consts.HDF5_KEY_LC_JSON_META, data=meta.model_dump())
-    train_dataset_h5.flush()
+    train_dataset_h5.finalize()
+    train_dataset_h5.close()
 
     print(f"All done! Dataset written to {train_dataset_h5.file_path}")
     print(meta.model_dump_json(indent=4))

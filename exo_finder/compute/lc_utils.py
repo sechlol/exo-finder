@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Generator, Optional
 
 import numpy as np
+from torch import Tensor
 
 from exotools.utils import get_contiguous_interval_indices
 
@@ -16,6 +17,13 @@ def standardize_array(a: np.ndarray):
 
 def normalize_flux(a: np.ndarray):
     return (a / np.median(a)) - 1
+
+
+def normalize_flux_minmax(a: np.ndarray | Tensor) -> np.ndarray | Tensor:
+    d = a.max() - a.min()
+    if d == 0:
+        return a
+    return (a - a.min()) / (a.max() - a.min())
 
 
 def split_array_in_contiguous_chunks_generator(array: np.ndarray, chunk_size: int) -> Generator[np.ndarray, None, None]:

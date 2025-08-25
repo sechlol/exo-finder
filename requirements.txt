@@ -3,6 +3,7 @@ batman-package
 wotan
 h5py
 torch
+lightning
 python-dotenv
 
 # Code formatting
@@ -13,3 +14,4 @@ plotly
 seaborn
 notebook
 ipywidgets
+tensorboard

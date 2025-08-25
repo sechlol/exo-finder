@@ -21,6 +21,7 @@ from exo_finder.data_pipeline.generation.dataset_generation_types import (
     SyntheticTransitGenerationParameters,
     TransitProfile,
 )
+from exo_finder.data_pipeline.generation.planetary_parameters import PlanetaryParameters
 from exo_finder.data_pipeline.generation.time_generation import data_count_to_days, generate_time_days_of_length
 from exo_finder.data_pipeline.generation.transit_generation import (
     PlanetType,
@@ -48,12 +49,13 @@ def _init_globals(extra_arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _define_data_balance() -> list[TransitProfile]:
-    lightcurve_max_d = data_count_to_days(data_points_count=consts.SYNTHETIC_DATASET_LENGTH)
+def define_data_balance() -> SyntheticTransitGenerationParameters:
+    weight_of_no_transits = 1
+    lightcurve_max_d = data_count_to_days(data_points_count=consts.LC_WINDOW_SIZE)
     default_midpoint_range = (0, lightcurve_max_d)
 
     # Uniform class labels
-    return [
+    data_balance = [
         TransitProfile(
             planet_type=PlanetType.EARTH,
             transit_period_range=(0.4, lightcurve_max_d),
@@ -84,18 +86,20 @@ def _define_data_balance() -> list[TransitProfile]:
             transit_midpoint_range=default_midpoint_range,
             weight=1,
         ),
+        None,
     ]
 
+    probabilities = softmax([x.weight if x is not None else weight_of_no_transits for x in data_balance])
 
-def generate_synthetic_transits():
-    data_balance = _define_data_balance()
-    probabilities = softmax([x.weight for x in data_balance])
-
-    generation_parameters = SyntheticTransitGenerationParameters(
+    return SyntheticTransitGenerationParameters(
         dataset_length=consts.SYNTHETIC_DATASET_LENGTH,
         lightcurve_length_points=consts.LC_WINDOW_SIZE,
         transits_distribution=list(zip(probabilities, data_balance)),
     )
+
+
+def generate_synthetic_transits():
+    generation_parameters = define_data_balance()
 
     n_jobs = os.cpu_count() - 2
     batch_size = 256
@@ -113,10 +117,10 @@ def generate_synthetic_transits():
     }
 
     random_indices = np.random.choice(
-        list(range(len(data_balance))),
+        list(range(generation_parameters.count_distributions())),
         size=consts.SYNTHETIC_DATASET_LENGTH,
         replace=True,
-        p=probabilities,
+        p=generation_parameters.get_probabilities(),
     )
 
     total_rows = 0
@@ -125,7 +129,7 @@ def generate_synthetic_transits():
     train_dataset_h5 = get_train_dataset_h5()
 
     for transits, generating_params in parallel_execution(
-        func=_generate_transits_batch,
+        func=_worker_generate_transits_batch,
         params=random_indices,
         task_distribution=TaskDistribution.STREAMED_BATCHES,
         description="Creating simulated transits",
@@ -151,42 +155,64 @@ def generate_synthetic_transits():
     )
 
     train_dataset_h5.write_json(json_key=consts.HDF5_KEY_SYNTHETIC_JSON_META, data=meta.model_dump())
+    train_dataset_h5.finalize()
+    train_dataset_h5.close()
 
     print(f"All done! Dataset written to {train_dataset_h5.file_path}")
     print(meta.model_dump_json(indent=4))
 
 
-def _generate_transits_batch(indices: Sequence[int]) -> tuple[npt.NDArray, npt.NDArray]:
+def _worker_generate_transits_batch(indices: Sequence[int]) -> tuple[npt.NDArray, npt.NDArray]:
     worker_context = get_worker_context()
 
     gaia_df = worker_context.get("gaia_df")
     global_time_x = worker_context.get("time_x")
     rng = worker_context.get("random_generator")
     generation_parameters = worker_context.get("gen_parameters")
+    return generate_transits_batch(
+        indices=indices,
+        gaia_df=gaia_df,
+        global_time_x=global_time_x,
+        rng=rng,
+        generation_parameters=generation_parameters,
+    )
 
+
+def generate_transits_batch(
+    indices: Sequence[int],
+    gaia_df: pd.DataFrame,
+    generation_parameters: SyntheticTransitGenerationParameters,
+    rng: np.random.Generator,
+    global_time_x: np.ndarray,
+) -> tuple[npt.NDArray, npt.NDArray]:
     gaia_subset = gaia_df.sample(len(indices), random_state=rng.integers(low=0, high=2e9))
     all_generated_transits = []
     all_generated_params = []
 
     for i, (_, gaia_row) in zip(indices, gaia_subset.iterrows()):
         p, generation_specs = generation_parameters.transits_distribution[i]
-        transit_parameters = generate_transit_parameters(
-            planet_type=generation_specs.planet_type,
-            orbital_period_interval=generation_specs.transit_period_range,
-            transit_midpoint_range=generation_specs.transit_midpoint_range,
-            star_radius=gaia_row["radius"] * u.solRad,
-            star_mass=gaia_row["mass_flame"] * u.solMass,
-            star_t_eff=gaia_row["teff_mean"] * u.K,
-            rnd_generator=rng,
-        )
-        generated_transits = generate_transits_from_params(
-            params=transit_parameters,
-            time_x=global_time_x,
-            median_flux=0,
-        )
+        if generation_specs is not None:
+            transit_parameters = generate_transit_parameters(
+                planet_type=generation_specs.planet_type,
+                orbital_period_interval=generation_specs.transit_period_range,
+                transit_midpoint_range=generation_specs.transit_midpoint_range,
+                star_radius=gaia_row["radius"] * u.solRad,
+                star_mass=gaia_row["mass_flame"] * u.solMass,
+                star_t_eff=gaia_row["teff_mean"] * u.K,
+                rnd_generator=rng,
+            )
+            generated_flux = generate_transits_from_params(
+                params=transit_parameters,
+                time_x=global_time_x,
+                median_flux=0,
+            )
+            parameters_array = transit_parameters.to_numpy()
+        else:
+            parameters_array = np.zeros(PlanetaryParameters.parameter_count(), dtype=np.float32)
+            generated_flux = np.zeros(generation_parameters.lightcurve_length_points, dtype=np.float32)
 
-        all_generated_params.append(transit_parameters.to_numpy())
-        all_generated_transits.append(generated_transits)
+        all_generated_params.append(parameters_array)
+        all_generated_transits.append(generated_flux)
 
     return np.vstack(all_generated_transits), np.vstack(all_generated_params)
 

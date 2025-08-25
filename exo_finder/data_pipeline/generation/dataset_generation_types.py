@@ -17,6 +17,12 @@ class SyntheticTransitGenerationParameters(pydantic.BaseModel):
     lightcurve_length_points: int
     transits_distribution: list[tuple[float, Optional[TransitProfile]]]
 
+    def count_distributions(self) -> int:
+        return len(self.transits_distribution)
+
+    def get_probabilities(self) -> list[float]:
+        return [x[0] for x in self.transits_distribution]
+
 
 class SyntheticLcDatasetMetadata(pydantic.BaseModel):
     lc_data_shape: tuple[int, int]

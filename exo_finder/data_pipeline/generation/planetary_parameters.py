@@ -6,6 +6,7 @@ import numpy as np
 from .time_generation import time_of_first_transit_midpoint
 
 _DEFAULT_PATCH_SIZE = 4096
+_PARAMETER_COUNT = 15
 
 
 class PlanetaryParameters(NamedTuple):
@@ -20,6 +21,10 @@ class PlanetaryParameters(NamedTuple):
     argument_of_periastron_deg: float
     limb_darkening_c1: float
     limb_darkening_c2: float
+
+    @staticmethod
+    def parameter_count() -> int:
+        return _PARAMETER_COUNT
 
     @property
     def first_transit_midpoint_d(self) -> float:
