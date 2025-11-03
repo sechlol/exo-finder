@@ -4,6 +4,7 @@ wotan
 h5py
 torch
 lightning
+torchmetrics
 python-dotenv
 
 # Code formatting

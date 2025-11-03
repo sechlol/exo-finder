@@ -1,25 +1,28 @@
 import lightning as L
 import torch
 from lightning.pytorch.callbacks import TQDMProgressBar
+from lightning.pytorch.loggers import CSVLogger
 
 import exo_finder.constants as c
 from exo_finder.training.base.model_io import get_checkpoint_path
 from exo_finder.training.clean_transit_prediction.transit_segmentation_model import CleanSegmentationModel
+from exo_finder.training.clean_transit_prediction.transit_segmentation_model2 import CleanSegmentationModelConv
 from exo_finder.training.data_loading.lightcurve_dataset import LcDataModule
 from paths import MODEL_DATA_PATH
 
-CHECKPOINT_PATH = MODEL_DATA_PATH / "clean_segmentation_model"
+CHECKPOINT_PATH = MODEL_DATA_PATH / "clean_segmentation_model_conv"
 
 
 def new_train():
     data_module = LcDataModule(batch_size=64)
-    model = CleanSegmentationModel(input_size=c.LC_WINDOW_SIZE, bottleneck_size=32)
+    model = CleanSegmentationModelConv(input_size=c.LC_WINDOW_SIZE)
 
     trainer = L.Trainer(
         max_epochs=50,
         accelerator="auto",
         gradient_clip_val=1.0,
         log_every_n_steps=50,
+        logger=CSVLogger(CHECKPOINT_PATH),
         callbacks=[TQDMProgressBar(refresh_rate=50)],
         default_root_dir=CHECKPOINT_PATH,
         # profiler=AdvancedProfiler(dirpath=".", filename="perf_logs"),
@@ -41,6 +44,7 @@ def continue_train():
         accelerator="auto",
         gradient_clip_val=1.0,
         log_every_n_steps=50,
+        logger=CSVLogger("logs", name="my_exp_name"),
         callbacks=[TQDMProgressBar(refresh_rate=50)],
         default_root_dir=CHECKPOINT_PATH,
     )

@@ -1,3 +1,5 @@
+import math
+
 import lightning as L
 import numpy as np
 import torch
@@ -8,10 +10,12 @@ from torchmetrics import MetricCollection
 
 from exo_finder.compute.lc_utils import normalize_flux_minmax
 from exo_finder.training.base.focal_loss import FocalLoss
+from exo_finder.training.blocks.convolutional_encoder_1d import ConvolutionalEncoder1D, ConvolutionalEncoderParams
+from exo_finder.training.blocks.utils_module import DebugModule, UnsqueezeDim
 
 
-class CleanSegmentationModel(L.LightningModule):
-    def __init__(self, input_size: int, bottleneck_size: int = 32):
+class CleanSegmentationModelConv(L.LightningModule):
+    def __init__(self, input_size: int):
         super().__init__()
         self.lr = 1e-3
         self.wd = 1e-2
@@ -32,18 +36,29 @@ class CleanSegmentationModel(L.LightningModule):
 
         self._test_metrics = self._val_metrics.clone(prefix="test_")
 
-        self.net = nn.Sequential(
-            nn.Linear(in_features=input_size, out_features=bottleneck_size),
-            nn.BatchNorm1d(num_features=bottleneck_size),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(in_features=bottleneck_size, out_features=input_size),
+        final_power = 5
+        num_layers = int(math.log2(input_size) - final_power)
+        self.encoder = nn.Sequential(
+            DebugModule("Before unsqueeze"),
+            UnsqueezeDim(dim=2),
+            DebugModule("After unsqueeze"),
+            ConvolutionalEncoder1D(
+                params=ConvolutionalEncoderParams(
+                    num_layers=num_layers,
+                    kernel_size=15,  # 30 minutes
+                    in_features=1,
+                )
+            ),
         )
+
+        self.decoder = nn.Linear(in_features=2**final_power, out_features=input_size)
 
         self.save_hyperparameters()
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.net(x)
+        x = self.encoder(x)
+        DebugModule("after encoder").forward(x)
+        return self.decoder(x)
 
     def training_step(self, batched_data, batch_idx):
         x, y = self.get_xy(batched_data)
