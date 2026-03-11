@@ -1,0 +1,28 @@
+[project]
+name = "exo-finder"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "batman-package>=2.5.3",
+    "exotools>=0.2.0",
+    "h5py>=3.16.0",
+    "lightning>=2.6.1",
+    "python-dotenv>=1.2.2",
+    "torch>=2.10.0",
+    "wotan>=1.10",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.13.4",
+    "ipywidgets>=8.1.8",
+    "notebook>=7.5.5",
+    "plotly>=6.6.0",
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "seaborn>=0.13.2",
+    "tensorboard>=2.20.0",
+]
