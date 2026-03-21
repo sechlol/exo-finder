@@ -100,7 +100,11 @@ def define_data_balance() -> SyntheticTransitGenerationParameters:
 
 def generate_synthetic_transits(regenerate_if_existing: bool = False):
     train_dataset_h5 = get_train_dataset_h5()
-    if not regenerate_if_existing and train_dataset_h5.file_path.exists() and train_dataset_h5.exists(consts.HDF5_KEY_SYNTHETIC_DATA):
+    if (
+        not regenerate_if_existing
+        and train_dataset_h5.file_path.exists()
+        and train_dataset_h5.exists(consts.HDF5_KEY_SYNTHETIC_DATA)
+    ):
         print(f"Skipping synthetic transit generation: data already exists in {train_dataset_h5.file_path}")
         train_dataset_h5.close()
         return

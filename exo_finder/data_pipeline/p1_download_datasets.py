@@ -22,7 +22,9 @@ def download_datasets():
         logger.info("Should take between 5-10 minutes.")
         exo_db = exo_dataset.download_known_exoplanets(with_gaia_star_data=True, store=True)
     gaia_exo_db = exo_dataset.load_gaia_dataset_of_known_exoplanets()
-    logger.success(f"Downloaded {len(exo_db)} known exoplanets records ({len(exo_db.get_planet_names())} unique planets) and {len(gaia_exo_db)} gaia records")
+    logger.success(
+        f"Downloaded {len(exo_db)} known exoplanets records ({len(exo_db.get_planet_names())} unique planets) and {len(gaia_exo_db)} gaia records"
+    )
 
     toi_db: CandidateDB = candidate_dataset.load_candidate_exoplanets_dataset()
     if not toi_db:

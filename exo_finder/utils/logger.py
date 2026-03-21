@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Optional, Union, TextIO
+from typing import Optional, Union
 
 
 # ANSI color codes for terminal output
