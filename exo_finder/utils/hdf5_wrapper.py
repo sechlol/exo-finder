@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import json
+import logging
 import os
+import subprocess
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Literal, Sequence
 
 import h5py
 import numpy as np
 import numpy.typing as npt
+
+logger = logging.getLogger(__name__)
 
 
 class H5Wrapper:
@@ -29,20 +35,20 @@ class H5Wrapper:
     def __init__(
         self,
         file_path: Path | str,
-        compression: Optional[Literal["gzip", "lzf"]] = "lzf",
+        compression: Literal["gzip", "lzf"] | None = "lzf",
         *,
         # Chunking / compression
-        chunk_rows: Optional[int] = None,  # fixed rows per chunk; if None, use target_chunk_mib heuristic
+        chunk_rows: int | None = None,  # fixed rows per chunk; if None, use target_chunk_mib heuristic
         target_chunk_mib: float = 2.0,  # used if chunk_rows is None
-        compression_opts: Optional[int] = None,  # gzip level or None
-        shuffle: Optional[bool] = None,  # default: True for gzip, False for lzf
+        compression_opts: int | None = None,  # gzip level or None
+        shuffle: bool | None = None,  # default: True for gzip, False for lzf
         # Read-side raw data chunk cache (per reader handle)
         rdcc_bytes: int = 256 * 1024 * 1024,
         rdcc_slots: int = 1_000_003,
         rdcc_w0: float = 0.75,
         # HDF5 lib options
         libver: Literal["latest", "earliest"] = "latest",
-        enable_file_locking: Optional[bool] = None,  # set HDF5_USE_FILE_LOCKING; None = don't touch env
+        enable_file_locking: bool | None = None,  # set HDF5_USE_FILE_LOCKING; None = don't touch env
     ):
         self._file_path = Path(file_path)
         self.compression = compression
@@ -59,27 +65,48 @@ class H5Wrapper:
             os.environ["HDF5_USE_FILE_LOCKING"] = "TRUE" if enable_file_locking else "FALSE"
 
         # Lazy handles: one for writing, one for reading
-        self._wf: Optional[h5py.File] = None
-        self._rf: Optional[h5py.File] = None
+        self._wf: h5py.File | None = None
+        self._rf: h5py.File | None = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
     @property
     def file_path(self) -> Path:
         return self._file_path
 
     def _open_writer(self) -> h5py.File:
-        if self._wf is None:
-            os.makedirs(self._file_path.parent, exist_ok=True)
-            # "a" = create or read/write
+        if self._wf is not None:
+            return self._wf
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
             self._wf = h5py.File(self._file_path, "a", libver=self.libver)
-            if "libver" not in self._wf.attrs:
-                self._wf.attrs["libver"] = self.libver
+        except OSError:
+            logger.warning("HDF5 file appears dirty; running h5clear -s %s", self._file_path)
+            subprocess.run(
+                ["h5clear", "-s", str(self._file_path)],
+                check=True,
+                capture_output=True,
+            )
+            self._wf = h5py.File(self._file_path, "a", libver=self.libver)
+        if "libver" not in self._wf.attrs:
+            self._wf.attrs["libver"] = self.libver
         return self._wf
 
     def _open_reader(self) -> h5py.File:
         if self._rf is None:
-            # SWMR read with tuned raw chunk cache
             self._rf = h5py.File(self._file_path, "r", libver=self.libver, swmr=True, **self._rdcc)
         return self._rf
+
+    def refresh_reader(self):
+        """Close and reopen the reader so it picks up data written since last open."""
+        if self._rf is not None:
+            self._rf.close()
+            self._rf = None
 
     @staticmethod
     def _json_path(key: str) -> str:
@@ -125,7 +152,9 @@ class H5Wrapper:
         path = self._json_path(json_key)
         if path not in f:
             raise KeyError(f"JSON key not found: {json_key}")
-        raw = f[path][()].decode("utf-8") if isinstance(f[path][()], (bytes, bytearray)) else f[path][()]
+        raw = f[path][()]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
         return json.loads(raw)
 
     # -------------------- Array append API --------------------
@@ -163,7 +192,7 @@ class H5Wrapper:
         return d
 
     @staticmethod
-    def _normalize_append_array(arr: npt.NDArray) -> Tuple[np.ndarray, int, int]:
+    def _normalize_append_array(arr: npt.NDArray) -> tuple[np.ndarray, int, int]:
         if arr.ndim == 1:
             arr = arr[None, :]
         if arr.ndim != 2:
@@ -187,6 +216,13 @@ class H5Wrapper:
         d.resize((i1, W))
         d[i0:i1] = arr
         d.attrs["length"] = i1
+
+    def extend(self, dataset_key: str, batches: Sequence[npt.NDArray]):
+        """Append multiple arrays in a single resize operation."""
+        if not batches:
+            return
+        combined = np.concatenate([np.atleast_2d(b) for b in batches], axis=0)
+        self.append(dataset_key, combined)
 
     # -------------------- Read API --------------------
 
@@ -220,7 +256,7 @@ class H5Wrapper:
         uniq_idx, uniq_inverse = np.unique(sorted_idx, return_inverse=True)
 
         # Single HDF5 read
-        uniq_rows = dset[uniq_idx.tolist()]  # strictly increasing list
+        uniq_rows = dset[uniq_idx]
 
         # Reconstruct the sorted output (with duplicates)
         out_sorted = uniq_rows[uniq_inverse]
@@ -231,7 +267,7 @@ class H5Wrapper:
         return np.asarray(out_sorted)[inv]
 
     @staticmethod
-    def _normalize_index(idx: Optional[int | Sequence[int] | slice], N: int) -> Tuple[Optional[np.ndarray], bool]:
+    def _normalize_index(idx: int | Sequence[int] | slice | None, N: int) -> tuple[np.ndarray | None, bool]:
         """
         Normalize an index spec into (indices | None, is_single):
           - None  -> (None, False)   meaning "all"
@@ -254,18 +290,15 @@ class H5Wrapper:
             raise ValueError("Indices must be 1D.")
         return arr, (arr.size == 1)
 
-    def get_shape(self, key: str) -> list[int]:
-        """
-        Return the shape of a dataset as a list of ints.
-        Raises KeyError if the dataset does not exist.
-        """
-        return self._read_dataset(key).shape
+    def get_shape(self, key: str) -> tuple[int, int]:
+        """Alias for :meth:`shape`; prefer ``shape()``."""
+        return self.shape(key)
 
     def read_one(
         self,
         dataset_key: str,
         row: int,
-        cols: Optional[int | Sequence[int] | slice] = None,
+        cols: int | Sequence[int] | slice | None = None,
     ) -> np.ndarray:
         """
         Optimized read for a single row.
@@ -308,8 +341,8 @@ class H5Wrapper:
     def read(
         self,
         dataset_key: str,
-        rows: Optional[int | Sequence[int] | slice] = None,
-        cols: Optional[int | Sequence[int] | slice] = None,
+        rows: int | Sequence[int] | slice | None = None,
+        cols: int | Sequence[int] | slice | None = None,
     ) -> np.ndarray:
         """
         - Raises if dataset does not exist.
@@ -360,12 +393,12 @@ class H5Wrapper:
 
     # -------------------- Introspection --------------------
 
-    def list_dataset_keys(self) -> List[str]:
+    def list_dataset_keys(self) -> list[str]:
         """
         Returns array dataset keys (excludes JSON namespace).
         """
         f = self._open_reader()
-        keys: List[str] = []
+        keys: list[str] = []
         for k, obj in f.items():
             if k == "json":
                 continue
@@ -373,19 +406,34 @@ class H5Wrapper:
                 keys.append(k)
         return keys
 
-    def list_json_keys(self) -> List[str]:
+    def list_json_keys(self) -> list[str]:
         f = self._open_reader()
         if "json" not in f:
             return []
-        return [k.split("/", 1)[1] for k in f["json"].keys()]
+        return list(f["json"].keys())
 
-    def shape(self, dataset_key: str) -> Tuple[int, int]:
+    def shape(self, dataset_key: str) -> tuple[int, int]:
         d = self._read_dataset(dataset_key)
-        return tuple(d.shape)  # (N, width)
+        return (d.shape[0], d.shape[1])
 
     def exists(self, dataset_key: str) -> bool:
         f = self._open_reader()
         return dataset_key in f and isinstance(f[dataset_key], h5py.Dataset)
+
+    # -------------------- Mutation helpers --------------------
+
+    def delete_keys(self, *keys: str):
+        """
+        Delete one or more top-level datasets or JSON keys from the file.
+        Silently skips keys that don't exist.
+        """
+        f = self._open_writer()
+        for key in keys:
+            if key in f:
+                del f[key]
+            json_path = self._json_path(key)
+            if json_path in f:
+                del f[json_path]
 
     # -------------------- Lifecycle controls --------------------
 

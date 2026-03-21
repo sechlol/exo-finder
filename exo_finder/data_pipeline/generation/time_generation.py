@@ -1,5 +1,5 @@
-import numpy as np
 import astropy.units as u
+import numpy as np
 from astropy.time import Time
 from astropy.timeseries import TimeSeries
 

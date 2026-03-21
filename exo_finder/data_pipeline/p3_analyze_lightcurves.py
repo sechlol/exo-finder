@@ -85,6 +85,10 @@ def load_and_calculate_lightcurve_statistics_batched(lc_paths: list[str]):
 
 
 def analyze_lightcurves():
+    if LC_STATS_RESULT_FILE.exists():
+        print(f"Skipping lightcurve analysis: results already exist at {LC_STATS_RESULT_FILE}")
+        return
+
     # Find all the downloaded lightcurves in the dataset
     all_lc_paths = find_lightcurve_paths()
     print(f"Found {len(all_lc_paths)} lightcurves in the dataset")

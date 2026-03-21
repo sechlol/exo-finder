@@ -20,9 +20,9 @@ This project uses environment variables for managing sensitive information like 
 
 3. The `.env` file is automatically ignored by git, so your secrets won't be committed to version control.
 
-4. In your code, access secrets using the utility functions:
+4. In your code, access secrets via the `settings` singleton:
    ```python
-   from exo_finder.utils.secrets import get_secret
+   from exo_finder.utils.secrets import settings
    
-   api_key = get_secret("API_KEY")
+   token = settings.MAST_TOKEN
    ```

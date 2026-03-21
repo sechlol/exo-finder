@@ -18,7 +18,7 @@ from exo_finder.default_datasets import gaia_dataset
 
 
 def _get_gaia_star_parameters() -> pd.DataFrame:
-    gaia_fields = ["gaia_id", "radius", "mass_flame", "teff_mean"]
+    gaia_fields = ["gaia_dr3_id", "radius", "mass_flame", "teff_mean"]
     return gaia_dataset.load_gaia_parameters_dataset().view[gaia_fields].to_pandas().dropna()
 
 

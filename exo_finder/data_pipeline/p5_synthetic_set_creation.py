@@ -32,7 +32,7 @@ from exo_finder.default_datasets import gaia_dataset, get_train_dataset_h5
 
 
 def _get_gaia_star_parameters() -> pd.DataFrame:
-    gaia_fields = ["gaia_id", "radius", "mass_flame", "teff_mean"]
+    gaia_fields = ["gaia_dr3_id", "radius", "mass_flame", "teff_mean"]
     return gaia_dataset.load_gaia_parameters_dataset().view[gaia_fields].to_pandas().dropna()
 
 
@@ -98,11 +98,17 @@ def define_data_balance() -> SyntheticTransitGenerationParameters:
     )
 
 
-def generate_synthetic_transits():
+def generate_synthetic_transits(regenerate_if_existing: bool = False):
+    train_dataset_h5 = get_train_dataset_h5()
+    if not regenerate_if_existing and train_dataset_h5.file_path.exists() and train_dataset_h5.exists(consts.HDF5_KEY_SYNTHETIC_DATA):
+        print(f"Skipping synthetic transit generation: data already exists in {train_dataset_h5.file_path}")
+        train_dataset_h5.close()
+        return
+
     generation_parameters = define_data_balance()
 
-    n_jobs = os.cpu_count() - 2
-    batch_size = 256
+    n_jobs = max(1, os.cpu_count() // 2)
+    batch_size = 128
     manager = Manager()
 
     # Create a queue of IDs used to seed the random number generator for each process
@@ -126,7 +132,13 @@ def generate_synthetic_transits():
     total_rows = 0
     transits_col = 0
     params_col = 0
-    train_dataset_h5 = get_train_dataset_h5()
+
+    # Clean up stale synthetic keys so re-runs don't collide
+    train_dataset_h5.delete_keys(
+        consts.HDF5_KEY_SYNTHETIC_DATA,
+        consts.HDF5_KEY_SYNTHETIC_PARAMS,
+        consts.HDF5_KEY_SYNTHETIC_JSON_META,
+    )
 
     for transits, generating_params in parallel_execution(
         func=_worker_generate_transits_batch,
@@ -218,4 +230,4 @@ def generate_transits_batch(
 
 
 if __name__ == "__main__":
-    generate_synthetic_transits()
+    generate_synthetic_transits(True)

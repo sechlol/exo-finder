@@ -12,7 +12,7 @@ from exo_finder.compute.lc_utils import (
 from exo_finder.compute.parallel_execution import TaskDistribution, parallel_execution
 from exo_finder.default_datasets import candidate_dataset, exo_dataset, sunlike_lightcurves_ds, get_train_dataset_h5
 from exotools import LightcurveDB
-from paths import LC_STATS_RESULT_FILE
+from paths import LC_STATS_RESULT_FILE, TRAINING_DATASET_FILE
 
 _MANDATORY_FIELDS = ["pl_rade", "pl_trandur", "pl_tranmid", "pl_orbsmax"]
 
@@ -122,9 +122,17 @@ def _detrend_lightcurves_batch(paths: list[str]) -> dict[str, np.ndarray]:
 
 
 def create_lightcurve_training_set():
+    if TRAINING_DATASET_FILE.exists():
+        print(f"Skipping detrended set creation: dataset already exists at {TRAINING_DATASET_FILE}")
+        return
+
     print("Selecting well behaving lightcurves...")
     selected_lc_db = _select_well_behaving_lightcurve_subset()
     train_dataset_h5 = get_train_dataset_h5()
+
+    # Remove stale file from a previous (possibly failed) run so we start fresh
+    if train_dataset_h5.file_path.exists():
+        train_dataset_h5.file_path.unlink()
 
     total_rows = 0
     cols = 0
