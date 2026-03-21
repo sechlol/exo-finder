@@ -986,7 +986,7 @@ testing = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.2.0" },
     { name = "batman-package", specifier = ">=2.5.3" },
-    { name = "exotools", editable = "../exotools" },
+    { name = "exotools", specifier = ">=0.3.0" },
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "lightning", specifier = ">=2.6.1" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
@@ -1012,7 +1012,7 @@ testing = [
 [[package]]
 name = "exotools"
 version = "0.3.0"
-source = { editable = "../exotools" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astropy", extra = ["recommended"] },
     { name = "astroquery" },
@@ -1030,33 +1030,10 @@ dependencies = [
     { name = "tomli" },
     { name = "tqdm" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "astropy", extras = ["recommended"] },
-    { name = "astroquery" },
-    { name = "casjobs" },
-    { name = "h5py" },
-    { name = "lightkurve" },
-    { name = "myst-parser", marker = "extra == 'dev'" },
-    { name = "numpy" },
-    { name = "oktopus" },
-    { name = "pandas", extras = ["performance"] },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "python-dotenv", marker = "extra == 'dev'" },
-    { name = "pyvo" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "sphinx", marker = "extra == 'dev'" },
-    { name = "sphinx-rtd-theme", marker = "extra == 'dev'" },
-    { name = "tables" },
-    { name = "tabulate" },
-    { name = "tomli" },
-    { name = "tqdm" },
+sdist = { url = "https://files.pythonhosted.org/packages/88/30/c6ae30286f2f6f8bd5ceb26526bf870670b057f066d1de3ec1de5fb0d04f/exotools-0.3.0.tar.gz", hash = "sha256:9c2805066fd86b41c55aa0cb072927d0156cfa011595d55322c0fcdd113ce6f9", size = 532679, upload-time = "2026-03-12T00:49:58.403Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/44/f37cf5a07fd8823bfe15b72267aac85a518d8361acb89903e9eba56ecaf9/exotools-0.3.0-py3-none-any.whl", hash = "sha256:508c5fa7f034513086587ab9cf8a2b9e6f29565e8be4b5ce48aced36697f17bc", size = 71490, upload-time = "2026-03-12T00:49:56.698Z" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "fastjsonschema"
