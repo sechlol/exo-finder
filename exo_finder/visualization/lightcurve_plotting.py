@@ -21,7 +21,7 @@ def plot_lightcurve_ax(
     if isinstance(lightcurve.time, Time):
         ax.set(xlabel=f"Days (format: {lightcurve.time.format}, scale: {lightcurve.time.scale})", ylabel="Flux")
     elif isinstance(lightcurve.time, Quantity):
-        ax.set(xlabel=f"Days (normalized)", ylabel="Flux")
+        ax.set(xlabel="Days (normalized)", ylabel="Flux")
     ax.grid(True)
     if title:
         ax.set(title=title)

@@ -1,5 +1,4 @@
 import numpy as np
-import warnings
 
 from astropy.units import Quantity
 
