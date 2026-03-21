@@ -974,10 +974,12 @@ dev = [
     { name = "notebook" },
     { name = "plotly" },
     { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "ruff" },
     { name = "seaborn" },
     { name = "tensorboard" },
+]
+testing = [
+    { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -999,10 +1001,12 @@ dev = [
     { name = "notebook", specifier = ">=7.5.5" },
     { name = "plotly", specifier = ">=6.6.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "ruff", specifier = ">=0.15.5" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "tensorboard", specifier = ">=2.20.0" },
+]
+testing = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "ruff", specifier = ">=0.15.5" },
 ]
 
 [[package]]
