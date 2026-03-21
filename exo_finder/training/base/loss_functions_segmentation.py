@@ -80,31 +80,6 @@ class IoULoss(nn.Module):
         return 1 - IoU
 
 
-class FocalLoss(nn.Module):
-    """
-    Focal Loss was introduced by Lin et al of Facebook AI Research in 2017 as a means of fighting extremely imbalanced datasets where positive cases were relatively rare. Their paper "Focal Loss for Dense Object Detection" is retrievable here: https://arxiv.org/abs/1708.02002.
-    In practice, the researchers used an alpha-modified version of the function so I have included it in this implementation.
-    """
-
-    def __init__(self, weight=None, size_average=True):
-        super(FocalLoss, self).__init__()
-
-    def forward(self, inputs, targets, alpha=0.8, gamma=2, smooth=1):
-        # comment out if your model contains a sigmoid or equivalent activation layer
-        inputs = F.sigmoid(inputs)
-
-        # flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
-
-        # first compute binary cross-entropy
-        BCE = F.binary_cross_entropy(inputs, targets, reduction="mean")
-        BCE_EXP = torch.exp(-BCE)
-        focal_loss = alpha * (1 - BCE_EXP) ** gamma * BCE
-
-        return focal_loss
-
-
 class TverskyLoss(nn.Module):
     """
     This loss was introduced in "Tversky loss function for image segmentationusing 3D fully convolutional deep networks", retrievable here: https://arxiv.org/abs/1706.05721. It was designed to optimise segmentation on imbalanced medical datasets by utilising constants that can adjust how harshly different types of error are penalised in the loss function. From the paper:
